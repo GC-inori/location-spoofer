@@ -1,0 +1,6 @@
+PRODUCT_NAME=PaopaoLocationSpoofer
+APP_DISPLAY_NAME=Location Spoofer
+APP_BUNDLE_ID=com.paopaolabs.location-spoofer
+APP_GROUP_ID=group.com.paopaolabs.location-spoofer
+CODE_SIGNING_ALLOWED=NO
+CODE_SIGNING_REQUIRED=NO

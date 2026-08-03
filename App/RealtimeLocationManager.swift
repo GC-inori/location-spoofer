@@ -1,0 +1,301 @@
+import Combine
+import CoreLocation
+import Foundation
+
+@MainActor
+protocol RealtimeLocationDriving: AnyObject {
+    var location: CLLocation? { get }
+    var authorizationStatus: CLAuthorizationStatus { get }
+    var delegate: CLLocationManagerDelegate? { get set }
+    func requestWhenInUseAuthorization()
+    func requestLocation()
+    func startUpdatingLocation()
+    func stopUpdatingLocation()
+}
+
+@MainActor
+final class CoreLocationDriver: RealtimeLocationDriving {
+    private let manager: CLLocationManager
+
+    init(manager: CLLocationManager = CLLocationManager()) {
+        self.manager = manager
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = kCLDistanceFilterNone
+    }
+
+    var location: CLLocation? { manager.location }
+    var authorizationStatus: CLAuthorizationStatus { manager.authorizationStatus }
+
+    var delegate: CLLocationManagerDelegate? {
+        get { manager.delegate }
+        set { manager.delegate = newValue }
+    }
+
+    func requestWhenInUseAuthorization() { manager.requestWhenInUseAuthorization() }
+    func requestLocation() { manager.requestLocation() }
+    func startUpdatingLocation() { manager.startUpdatingLocation() }
+    func stopUpdatingLocation() { manager.stopUpdatingLocation() }
+}
+
+@MainActor
+final class RealtimeLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    static let shared = RealtimeLocationManager(driver: CoreLocationDriver())
+
+    @Published private(set) var location: CLLocation?
+    @Published private(set) var authorizationStatus: CLAuthorizationStatus
+    @Published private(set) var isRequesting = false
+
+    private enum RequestPhase: Equatable {
+        case awaitingAuthorization
+        case oneShot
+        case continuousFallback
+    }
+
+    private struct ActiveRequest {
+        let id: UInt64
+        var startedAt: Date?
+        let continuation: CheckedContinuation<CLLocationCoordinate2D?, Never>
+        var phase: RequestPhase
+    }
+
+    private let driver: RealtimeLocationDriving
+    private let oneShotTimeoutNanoseconds: UInt64
+    private let fallbackTimeoutNanoseconds: UInt64
+    private let cacheMaxAge: TimeInterval
+    private var nextRequestID: UInt64 = 0
+    private var activeRequest: ActiveRequest?
+    private var timeoutTask: Task<Void, Never>?
+
+    init(
+        driver: RealtimeLocationDriving,
+        oneShotTimeoutNanoseconds: UInt64 = 1_500_000_000,
+        fallbackTimeoutNanoseconds: UInt64 = 5_000_000_000,
+        cacheMaxAge: TimeInterval = 20
+    ) {
+        self.driver = driver
+        self.oneShotTimeoutNanoseconds = oneShotTimeoutNanoseconds
+        self.fallbackTimeoutNanoseconds = fallbackTimeoutNanoseconds
+        self.cacheMaxAge = cacheMaxAge
+        authorizationStatus = driver.authorizationStatus
+        super.init()
+        driver.delegate = self
+        if let cached = driver.location, Self.isValid(cached) {
+            location = cached
+        }
+    }
+
+    convenience init(driver: RealtimeLocationDriving, timeoutNanoseconds: UInt64) {
+        self.init(
+            driver: driver,
+            oneShotTimeoutNanoseconds: timeoutNanoseconds,
+            fallbackTimeoutNanoseconds: timeoutNanoseconds
+        )
+    }
+
+    func requestLocation() async -> CLLocationCoordinate2D? {
+        guard activeRequest == nil else {
+            RuntimeLogger.warning("APP", "定位", "忽略重复实时定位请求")
+            return nil
+        }
+
+        authorizationStatus = driver.authorizationStatus
+        guard authorizationStatus != .denied, authorizationStatus != .restricted else {
+            return nil
+        }
+
+        if let cached = freshestCachedLocation() {
+            location = cached
+            RuntimeLogger.info("APP", "定位", "使用系统缓存实时定位", details: [
+                "age": String(format: "%.2f", max(0, -cached.timestamp.timeIntervalSinceNow)),
+                "lat": String(cached.coordinate.latitude),
+                "lon": String(cached.coordinate.longitude)
+            ])
+            return cached.coordinate
+        }
+
+        nextRequestID &+= 1
+        let requestID = nextRequestID
+        isRequesting = true
+        RuntimeLogger.info("APP", "定位", "请求实时定位…", details: ["requestID": String(requestID)])
+
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                activeRequest = ActiveRequest(
+                    id: requestID,
+                    startedAt: nil,
+                    continuation: continuation,
+                    phase: .awaitingAuthorization
+                )
+
+                if authorizationStatus == .notDetermined {
+                    scheduleTimeout(for: requestID, nanoseconds: fallbackTimeoutNanoseconds)
+                    driver.requestWhenInUseAuthorization()
+                } else {
+                    beginOneShot(for: requestID)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.finishRequest(id: requestID, coordinate: nil)
+            }
+        }
+    }
+
+    func startUpdating() {
+        if authorizationStatus == .notDetermined {
+            driver.requestWhenInUseAuthorization()
+        }
+        driver.startUpdatingLocation()
+    }
+
+    func stopUpdating() {
+        driver.stopUpdatingLocation()
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        MainActor.assumeIsolated {
+        authorizationStatus = driver.authorizationStatus
+        switch authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            if let request = activeRequest, request.phase == .awaitingAuthorization {
+                beginOneShot(for: request.id)
+            }
+        case .denied, .restricted:
+            finishRequest(id: activeRequest?.id, coordinate: nil)
+        case .notDetermined:
+            break
+        @unknown default:
+            finishRequest(id: activeRequest?.id, coordinate: nil)
+        }
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        MainActor.assumeIsolated {
+        let validLocations = locations.filter(Self.isValid)
+        if let latestValid = validLocations.last {
+            location = latestValid
+        }
+
+        guard let request = activeRequest,
+              let startedAt = request.startedAt,
+              request.phase != .awaitingAuthorization,
+              let latest = validLocations.last(where: {
+                  $0.timestamp >= startedAt.addingTimeInterval(-1)
+              }) else {
+            return
+        }
+        finishRequest(id: request.id, coordinate: latest.coordinate)
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        MainActor.assumeIsolated {
+        guard let request = activeRequest else { return }
+        RuntimeLogger.warning("APP", "定位", "定位回调失败", details: [
+            "requestID": String(request.id),
+            "error": error.localizedDescription
+        ])
+
+        let nsError = error as NSError
+        let isAuthorizationDenied = nsError.domain == kCLErrorDomain
+            && nsError.code == CLError.denied.rawValue
+
+        if request.phase == .oneShot,
+           !isAuthorizationDenied,
+           authorizationStatus != .denied,
+           authorizationStatus != .restricted {
+            beginFallback(for: request.id)
+        } else {
+            finishRequest(id: request.id, coordinate: nil)
+        }
+        }
+    }
+
+    private func freshestCachedLocation(now: Date = Date()) -> CLLocation? {
+        [location, driver.location]
+            .compactMap { $0 }
+            .filter(Self.isValid)
+            .filter { abs($0.timestamp.timeIntervalSince(now)) <= cacheMaxAge }
+            .max(by: { $0.timestamp < $1.timestamp })
+    }
+
+    private static func isValid(_ location: CLLocation) -> Bool {
+        CLLocationCoordinate2DIsValid(location.coordinate)
+            && location.horizontalAccuracy >= 0
+    }
+
+    private func scheduleTimeout(for requestID: UInt64, nanoseconds: UInt64) {
+        timeoutTask?.cancel()
+        timeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.handleTimeout(for: requestID)
+        }
+    }
+
+    private func handleTimeout(for requestID: UInt64) {
+        guard let request = activeRequest, request.id == requestID else { return }
+        switch request.phase {
+        case .awaitingAuthorization:
+            RuntimeLogger.warning("APP", "定位", "等待定位授权超时", details: ["requestID": String(requestID)])
+            finishRequest(id: requestID, coordinate: nil)
+        case .oneShot:
+            RuntimeLogger.warning("APP", "定位", "单次定位超时，切换持续定位", details: ["requestID": String(requestID)])
+            beginFallback(for: requestID)
+        case .continuousFallback:
+            RuntimeLogger.warning("APP", "定位", "持续定位超时", details: ["requestID": String(requestID)])
+            finishRequest(id: requestID, coordinate: nil)
+        }
+    }
+
+    private func beginOneShot(for requestID: UInt64) {
+        guard var request = activeRequest,
+              request.id == requestID,
+              request.phase == .awaitingAuthorization else { return }
+        request.phase = .oneShot
+        request.startedAt = Date()
+        activeRequest = request
+        scheduleTimeout(for: requestID, nanoseconds: oneShotTimeoutNanoseconds)
+        driver.requestLocation()
+    }
+
+    private func beginFallback(for requestID: UInt64) {
+        guard var request = activeRequest,
+              request.id == requestID,
+              request.phase == .oneShot else { return }
+        request.phase = .continuousFallback
+        activeRequest = request
+        driver.startUpdatingLocation()
+        scheduleTimeout(for: requestID, nanoseconds: fallbackTimeoutNanoseconds)
+    }
+
+    private func finishRequest(id requestID: UInt64?, coordinate: CLLocationCoordinate2D?) {
+        guard let requestID,
+              let request = activeRequest,
+              request.id == requestID else { return }
+
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        if request.phase == .continuousFallback {
+            driver.stopUpdatingLocation()
+        }
+        activeRequest = nil
+        isRequesting = false
+
+        if let coordinate {
+            RuntimeLogger.info("APP", "定位", "获取到实时定位", details: [
+                "requestID": String(requestID),
+                "lat": String(coordinate.latitude),
+                "lon": String(coordinate.longitude)
+            ])
+        } else {
+            RuntimeLogger.warning("APP", "定位", "实时定位请求结束但没有坐标", details: ["requestID": String(requestID)])
+        }
+        request.continuation.resume(returning: coordinate)
+    }
+}

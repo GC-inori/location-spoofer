@@ -1,0 +1,27 @@
+.DS_Store
+.superpowers/
+build/
+dist/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.a
+*.o
+*.log
+Core/vendor/
+Core/wloccore.h
+Wloc.xcodeproj/
+
+.worktrees/
+/PaopaoLocationSpoofer.xcodeproj/
+
+# Local AI/editor/workflow metadata and other hidden directories
+.*/
+!.gitignore
+!.github/
+.github/*
+!.github/workflows/
+!.github/workflows/**
+Core/core
+docs/superpowers/

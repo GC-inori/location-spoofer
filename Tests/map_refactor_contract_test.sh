@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+MAP_HOME="$ROOT/App/MapHomeView.swift"
+MAP_STATE="$ROOT/App/MapLocationState.swift"
+MAP_BRIDGE="$ROOT/App/MapViewRepresentable.swift"
+REALTIME="$ROOT/App/RealtimeLocationManager.swift"
+SETUP="$ROOT/App/SetupCoordinator.swift"
+PROXY="$ROOT/App/ProxyManager.swift"
+SETTINGS_NAVIGATOR="$ROOT/App/SystemSettingsNavigator.swift"
+DIAGNOSTICS="$ROOT/App/DiagnosticsView.swift"
+
+for file in "$MAP_HOME" "$MAP_STATE" "$MAP_BRIDGE" "$REALTIME" "$SETUP" "$PROXY" "$SETTINGS_NAVIGATOR" "$DIAGNOSTICS"; do
+  test -f "$file" || fail "missing required refactor file: $file"
+done
+
+! grep -q 'draftCoordinate' "$MAP_HOME" || fail "MapHomeView must not keep the old draftCoordinate authority"
+! grep -q 'needsZoom' "$MAP_HOME" || fail "MapHomeView must use camera commands instead of needsZoom"
+! grep -q '@Binding var coordinate' "$MAP_BRIDGE" || fail "map bridge must not write a coordinate Binding"
+grep -q 'showsUserLocation = true' "$MAP_BRIDGE" || fail "MapKit native user location must be visible"
+grep -q 'didUpdate userLocation' "$MAP_BRIDGE" || fail "MapKit native user location must feed realtime state"
+grep -q 'MapCameraCommand' "$MAP_BRIDGE" || fail "map bridge must consume MapCameraCommand"
+grep -q 'activeCameraCommandID' "$MAP_BRIDGE" || fail "programmatic map callbacks must be associated with the active camera command"
+grep -q 'UIPanGestureRecognizer' "$MAP_BRIDGE" || fail "map panning must be recognized explicitly"
+grep -q 'UIPinchGestureRecognizer' "$MAP_BRIDGE" || fail "pinch zoom must not be treated as a selected-center pan"
+! grep -q 'RealtimeLocationAnnotation' "$MAP_BRIDGE" || fail "custom realtime point must be removed in favor of MKUserLocation"
+grep -q 'selectionRevision' "$MAP_STATE" || fail "map state must reject stale async results by revision"
+grep -q 'isApproximatelyEqual(to: coordinate)' "$MAP_STATE" || fail "pure viewport changes must not replace an unchanged selection"
+grep -q 'displayName(viewportMeters:' "$MAP_STATE" || fail "place labels must depend on viewport size"
+grep -q 'var road:' "$MAP_STATE" || fail "place labels must keep road granularity separate from doorplate details"
+grep -q 'district: placemark.subLocality' "$MAP_HOME" || fail "Chinese-style sub-locality must feed the district zoom level"
+grep -Eq '@Published private\(set\) var location' "$REALTIME" || fail "realtime location must be read-only outside its manager"
+grep -q 'CLLocationCoordinate2DIsValid' "$REALTIME" || fail "realtime manager must reject invalid coordinates"
+grep -q 'horizontalAccuracy >= 0' "$REALTIME" || fail "realtime manager must reject invalid accuracy samples"
+grep -q 'kCLErrorDomain' "$REALTIME" || fail "denied Core Location errors must be terminal"
+grep -q 'case awaitingAuthorization' "$REALTIME" || fail "location requests must wait for authorization before requesting a sample"
+grep -q 'var location: CLLocation?' "$REALTIME" || fail "Core Location driver must expose its cached native sample"
+grep -q 'oneShotTimeoutNanoseconds' "$REALTIME" || fail "one-shot and fallback timeouts must be independent"
+! grep -q 'pendingContinuation' "$REALTIME" || fail "unversioned pendingContinuation must be removed"
+grep -q 'defer' "$SETUP" || fail "verification must restore temporary state with defer"
+grep -q 'restoreCoords' "$SETUP" || fail "verification must use revision-aware coordinate restoration"
+grep -q 'coordinateRevision' "$PROXY" || fail "proxy coordinate writes must be revisioned"
+grep -q 'setCoordsIfUnchanged' "$SETUP" || fail "verification must not overwrite a newer coordinate before its test write"
+grep -q 'applyVerified' "$MAP_HOME" || fail "verified location commits must be synchronous after revision validation"
+grep -q 'realtimeRequestTask' "$MAP_HOME" || fail "realtime button requests must be synchronously serialized"
+grep -q 'RealtimeLocationRequestContext' "$MAP_HOME" || fail "a realtime button tap must retarget an in-flight startup request instead of being ignored"
+grep -q 'CLError.network' "$MAP_HOME" || fail "reverse geocoding network failures must use bounded retry"
+grep -q 'SystemSettingsNavigator' "$MAP_HOME" || fail "settings actions must use the shared navigator"
+grep -q '复制全部日志' "$DIAGNOSTICS" || fail "diagnostics must show a standalone copy button"
+grep -q '清空日志' "$DIAGNOSTICS" || fail "diagnostics must show a standalone clear button"
+grep -q 'enum SystemSettingsNavigator' "$SETTINGS_NAVIGATOR" || fail "shared settings navigator is missing"
+grep -q 'MARKETING_VERSION: "0.0.4"' "$ROOT/project.yml" || fail "marketing version must be 0.0.4"
+grep -q '## \[0.0.4\] — 待发布' "$ROOT/docs/CHANGELOG.md" || fail "0.0.4 pending changelog section is missing"
+
+echo "PASS: map location state refactor contract"
