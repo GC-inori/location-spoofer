@@ -38,6 +38,8 @@ struct MapViewRepresentable: UIViewRepresentable {
     let onViewportChanged: (CLLocationDistance) -> Void
     let onMapTap: (CLLocationCoordinate2D) -> Void
     let onUserZoomChanged: ((CLLocationDistance) -> Void)?
+    var onZoomIn: (() -> Void)?
+    var onZoomOut: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -55,10 +57,83 @@ struct MapViewRepresentable: UIViewRepresentable {
             animated: false
         )
 
+        // Center pin — positioned relative to geographic center, not Auto Layout
+        let pinSize: CGFloat = 38
+        let sizeCfg = UIImage.SymbolConfiguration(pointSize: pinSize, weight: .semibold)
+        let paletteCfg = UIImage.SymbolConfiguration(paletteColors: [.white, .red])
+        let pinImage = UIImage(systemName: "mappin",
+                               withConfiguration: sizeCfg.applying(paletteCfg))
+        let pin = UIImageView(image: pinImage)
+        pin.frame = CGRect(x: 0, y: 0, width: pinSize, height: pinSize)
+        pin.isUserInteractionEnabled = false
+        pin.layer.shadowColor = UIColor.black.cgColor
+        pin.layer.shadowOpacity = 0.28
+        pin.layer.shadowRadius = 5
+        pin.layer.shadowOffset = CGSize(width: 0, height: 3)
+        map.addSubview(pin)
+        context.coordinator.centerPin = pin
+
+        // Zoom controls — UIKit subviews inside MKMapView, move with the map
+        let zoomStack = UIStackView()
+        zoomStack.axis = .vertical
+        zoomStack.spacing = 0
+        zoomStack.translatesAutoresizingMaskIntoConstraints = false
+        zoomStack.alignment = .center
+        zoomStack.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.8)
+        zoomStack.layer.cornerRadius = 13
+        zoomStack.layer.shadowColor = UIColor.black.cgColor
+        zoomStack.layer.shadowOpacity = 0.18
+        zoomStack.layer.shadowRadius = 7
+        zoomStack.layer.shadowOffset = CGSize(width: 0, height: 3)
+
+        let zoomInBtn = UIButton(type: .system)
+        zoomInBtn.setImage(UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)), for: .normal)
+        zoomInBtn.addTarget(context.coordinator, action: #selector(Coordinator.zoomInTapped), for: .touchUpInside)
+        zoomInBtn.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        zoomInBtn.widthAnchor.constraint(equalToConstant: 52).isActive = true
+
+        let zoomLabel = UILabel()
+        let roundedDesc = UIFont.systemFont(ofSize: 9, weight: .semibold).fontDescriptor.withDesign(.rounded)
+        zoomLabel.font = roundedDesc.flatMap { UIFont(descriptor: $0, size: 9) } ?? .systemFont(ofSize: 9, weight: .semibold)
+        zoomLabel.textColor = .secondaryLabel
+        zoomLabel.textAlignment = .center
+        zoomLabel.adjustsFontSizeToFitWidth = true
+        zoomLabel.minimumScaleFactor = 0.7
+        zoomLabel.text = MapZoomMath.viewportScaleLabel(distanceMeters: ViewportStore.loadOrDefault())
+        zoomLabel.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        context.coordinator.zoomLabel = zoomLabel
+
+        let zoomOutBtn = UIButton(type: .system)
+        zoomOutBtn.setImage(UIImage(systemName: "minus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)), for: .normal)
+        zoomOutBtn.addTarget(context.coordinator, action: #selector(Coordinator.zoomOutTapped), for: .touchUpInside)
+        zoomOutBtn.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        zoomOutBtn.widthAnchor.constraint(equalToConstant: 52).isActive = true
+
+        let sep1 = UIView(); sep1.translatesAutoresizingMaskIntoConstraints = false
+        sep1.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
+        sep1.backgroundColor = .separator
+        sep1.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        let sep2 = UIView(); sep2.translatesAutoresizingMaskIntoConstraints = false
+        sep2.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
+        sep2.backgroundColor = .separator
+        sep2.widthAnchor.constraint(equalToConstant: 28).isActive = true
+
+        zoomStack.addArrangedSubview(zoomInBtn)
+        zoomStack.addArrangedSubview(sep1)
+        zoomStack.addArrangedSubview(zoomLabel)
+        zoomStack.addArrangedSubview(sep2)
+        zoomStack.addArrangedSubview(zoomOutBtn)
+        map.addSubview(zoomStack)
+        NSLayoutConstraint.activate([
+            zoomStack.leadingAnchor.constraint(equalTo: map.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            zoomStack.topAnchor.constraint(equalTo: map.safeAreaLayoutGuide.topAnchor, constant: 130),
+        ])
+
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         tap.cancelsTouchesInView = false
         map.addGestureRecognizer(tap)
         context.coordinator.map = map
+        context.coordinator.setupKeyboardObservers()
         return map
     }
 
@@ -76,9 +151,39 @@ struct MapViewRepresentable: UIViewRepresentable {
         private var activeCommandIsZoom = false
         private var regionChangeWasUserDriven = false
         private var isPinchZoom = false
+        weak var zoomLabel: UILabel?
+        weak var centerPin: UIImageView?
+        private let pinSize: CGFloat = 38
+        // 蓝点实际大小从 MKUserLocationView 取，默认 20pt
+        private var userDotDiameter: CGFloat = 20
+
+        @objc func zoomInTapped() { parent.onZoomIn?() }
+        @objc func zoomOutTapped() { parent.onZoomOut?() }
 
         init(parent: MapViewRepresentable) {
             self.parent = parent
+        }
+
+        private func updatePinPosition(on mapView: MKMapView) {
+            guard let pin = centerPin else { return }
+            let centerPt = mapView.convert(mapView.centerCoordinate, toPointTo: mapView)
+            // pin 尖在底边，上移自身一半 + 蓝点半径对齐
+            pin.center = CGPoint(
+                x: centerPt.x,
+                y: centerPt.y - pinSize / 2 + 5
+            )
+        }
+
+        func setupKeyboardObservers() {
+            let nc = NotificationCenter.default
+            nc.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self, let map = self.map else { return }
+                self.updatePinPosition(on: map)
+            }
+            nc.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self, let map = self.map else { return }
+                self.updatePinPosition(on: map)
+            }
         }
 
         func consume(_ command: MapCameraCommand?, on map: MKMapView) {
@@ -109,6 +214,16 @@ struct MapViewRepresentable: UIViewRepresentable {
             guard gesture.state == .ended, let map else { return }
             let point = gesture.location(in: map)
             parent.onMapTap(map.convert(point, toCoordinateFrom: map))
+        }
+
+        func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
+            for view in views where view.annotation is MKUserLocation {
+                // 取蓝点实际大小，隐藏精度圈
+                userDotDiameter = view.bounds.width
+                for sub in view.subviews where sub.bounds.width > userDotDiameter + 4 {
+                    sub.isHidden = true
+                }
+            }
         }
 
         func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
@@ -143,6 +258,16 @@ struct MapViewRepresentable: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             let distance = visibleVerticalDistance(in: mapView)
             parent.onViewportChanged(distance)
+            zoomLabel?.text = MapZoomMath.viewportScaleLabel(distanceMeters: distance)
+            updatePinPosition(on: mapView)
+            // 每次地图区域变化时更新瓦片坐标系类型
+            let c = mapView.centerCoordinate
+            CoordinateConverter.updateTileType(lat: c.latitude, lon: c.longitude)
+            // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
+            if let ul = mapView.userLocation.location,
+               CLLocationCoordinate2DIsValid(ul.coordinate), ul.horizontalAccuracy >= 0 {
+                parent.onRealtimeLocationChanged(ul)
+            }
 
             let userZoomed: Bool
             if activeCameraCommandID != nil {

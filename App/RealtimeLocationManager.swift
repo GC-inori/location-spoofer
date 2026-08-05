@@ -61,7 +61,7 @@ final class RealtimeLocationManager: NSObject, ObservableObject, CLLocationManag
     private let driver: RealtimeLocationDriving
     private let oneShotTimeoutNanoseconds: UInt64
     private let fallbackTimeoutNanoseconds: UInt64
-    private let cacheMaxAge: TimeInterval
+    private let cacheMaxAge: TimeInterval = 20
     private var nextRequestID: UInt64 = 0
     private var activeRequest: ActiveRequest?
     private var timeoutTask: Task<Void, Never>?
@@ -69,13 +69,11 @@ final class RealtimeLocationManager: NSObject, ObservableObject, CLLocationManag
     init(
         driver: RealtimeLocationDriving,
         oneShotTimeoutNanoseconds: UInt64 = 1_500_000_000,
-        fallbackTimeoutNanoseconds: UInt64 = 5_000_000_000,
-        cacheMaxAge: TimeInterval = 20
+        fallbackTimeoutNanoseconds: UInt64 = 5_000_000_000
     ) {
         self.driver = driver
         self.oneShotTimeoutNanoseconds = oneShotTimeoutNanoseconds
         self.fallbackTimeoutNanoseconds = fallbackTimeoutNanoseconds
-        self.cacheMaxAge = cacheMaxAge
         authorizationStatus = driver.authorizationStatus
         super.init()
         driver.delegate = self
@@ -105,11 +103,6 @@ final class RealtimeLocationManager: NSObject, ObservableObject, CLLocationManag
 
         if let cached = freshestCachedLocation() {
             location = cached
-            RuntimeLogger.info("APP", "定位", "使用系统缓存实时定位", details: [
-                "age": String(format: "%.2f", max(0, -cached.timestamp.timeIntervalSinceNow)),
-                "lat": String(cached.coordinate.latitude),
-                "lon": String(cached.coordinate.longitude)
-            ])
             return cached.coordinate
         }
 

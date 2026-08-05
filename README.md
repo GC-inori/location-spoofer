@@ -45,15 +45,23 @@
 <table>
   <tr>
     <th>应用主界面</th>
+    <th>钉钉</th>
+    <th>微信</th>
+  </tr>
+  <tr>
+    <td><img src="images/主界面.jpg" alt="iOS 虚拟定位应用主界面" width="180"></td>
+    <td><img src="images/钉钉.jpg" alt="钉钉虚拟定位打卡" width="180"></td>
+    <td><img src="images/微信.jpg" alt="微信虚拟定位" width="180"></td>
+  </tr>
+  <tr>
     <th>Apple 地图</th>
     <th>高德地图</th>
     <th>Apple Watch</th>
   </tr>
   <tr>
-    <td><img src="images/主界面.jpg" alt="iOS 虚拟定位应用主界面" width="210"></td>
-    <td><img src="images/Apple%20Map.jpg" alt="iPhone Location Spoofer Apple Maps 效果" width="210"></td>
-    <td><img src="images/高德地图.jpg" alt="Fake GPS 高德地图定位效果" width="210"></td>
-    <td><img src="images/高血压.jpg" alt="Apple Watch 地区功能验证" width="210"></td>
+    <td><img src="images/Apple%20Map.jpg" alt="Apple Maps 定位效果" width="180"></td>
+    <td><img src="images/高德地图.jpg" alt="高德地图定位效果" width="180"></td>
+    <td><img src="images/高血压.jpg" alt="Apple Watch 地区功能验证" width="180"></td>
   </tr>
 </table>
 

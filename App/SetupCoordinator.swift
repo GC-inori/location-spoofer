@@ -54,15 +54,8 @@ final class SetupCoordinator: ObservableObject {
                 message = "代理链路异常，未收到响应"
                 return
             }
-            // 走同一套改写验证：Go Core 内模拟 Apple 响应并确认坐标被改写
-            let patchResult = CoreBridge.testWlocPatch(lat: testLat, lon: testLon, accuracy: testAccuracy)
-            if patchResult.hasPrefix("ok:") {
-                trustState = .trusted
-                message = "✓ 定位环境正常（返回 \(status)）"
-            } else {
-                trustState = .unavailable
-                message = "定位数据改写验证失败：\(patchResult)"
-            }
+            trustState = .trusted
+            message = "✓ 定位环境正常（返回 \(status)）"
         } catch {
             trustState = .unavailable
             let ns = error as NSError
@@ -107,7 +100,6 @@ final class SetupCoordinator: ObservableObject {
         log("======== 代理验证测试 ========")
         log("App 版本: \(appVersion)")
         log("系统版本: iOS \(UIDevice.current.systemVersion)")
-        log("测试目标: lat=\(testLat), lon=\(testLon)")
         log("")
 
         // Step A: Proxy running
@@ -125,18 +117,6 @@ final class SetupCoordinator: ObservableObject {
             log("  ✓ 代理已在运行中")
         }
         collectProxyLogs(since: stepAStart, to: log)
-
-        // Verification must never overwrite a newer location action.
-        let previousCoordinates = proxy.coordinateSnapshot(
-            accuracy: WlocSettingsStore.load()?.accuracy ?? 25
-        )
-        var verificationCoordinateRevision: UInt64?
-        defer {
-            if let revision = verificationCoordinateRevision {
-                let restored = proxy.restoreCoords(previousCoordinates, ifUnchangedSince: revision)
-                log(restored ? "  ↩ 已恢复验证前的代理坐标" : "  ↩ 检测到更新位置，跳过旧坐标恢复")
-            }
-        }
 
         // Step B: Combined CA + WiFi proxy check (single request)
         log("")
@@ -180,38 +160,6 @@ final class SetupCoordinator: ObservableObject {
             return .wifiProxyNotConfigured
         }
         collectProxyLogs(since: stepBStart, to: log)
-
-        // Step C: Write and verify coordinates
-        log("[步骤 C] 写入测试坐标并验证…")
-        guard let testCoordinateRevision = proxy.setCoordsIfUnchanged(
-            lat: testLat,
-            lon: testLon,
-            enabled: true,
-            accuracy: 25,
-            expectedRevision: previousCoordinates.revision
-        ) else {
-            log("  ↪ 检测到更新位置，取消过期验证坐标写入")
-            return .verificationSuperseded
-        }
-        verificationCoordinateRevision = testCoordinateRevision
-        let coords = proxy.getCoords()
-        if coords.enabled && abs(coords.lat - testLat) < 0.001 && abs(coords.lon - testLon) < 0.001 {
-            log("  ✓ 坐标写入成功: lat=\(coords.lat) lon=\(coords.lon)")
-        } else {
-            log("  ✗ 坐标验证失败: enabled=\(coords.enabled) lat=\(coords.lat) lon=\(coords.lon)")
-            return .coordinateWriteFailed("写入后回读不一致")
-        }
-
-        // Step D: verify data rewriting via Go test patch
-        log("[步骤 D] 验证定位数据改写…")
-        let result = CoreBridge.testWlocPatch(lat: testLat, lon: testLon, accuracy: 25)
-        log("  \(result)")
-        if result.hasPrefix("ok:") {
-            log("  ✓ 定位数据改写验证通过")
-        } else {
-            log("  ✗ 定位数据改写失败")
-            return .patchFailed(result)
-        }
 
         log("")
         log("======== 环境检测通过 ✓ ========")

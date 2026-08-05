@@ -56,9 +56,8 @@ final class LocationActionCoordinator: ObservableObject {
     }
 
     private func commit(_ favorite: FavoriteLocation) -> Bool {
-        // MKMapView 在中国地区使用高德瓦片（GCJ-02），返回的坐标是 GCJ-02。
-        // 但 Apple wloc 定位服务使用 WGS-84，因此写入代理前需要转换为 WGS-84。
-        let wgs = CoordinateConverter.gcj02ToWgs84(lat: favorite.latitude, lon: favorite.longitude)
+        // 统一转为 WGS-84 存储（地图取点可能为当前瓦片坐标系）
+        let wgs = CoordinateConverter.toStored(lat: favorite.latitude, lon: favorite.longitude)
         WlocSettingsStore.save(WlocSettings(
             longitude: wgs.lon,
             latitude: wgs.lat,
@@ -71,6 +70,10 @@ final class LocationActionCoordinator: ObservableObject {
             enabled: true,
             accuracy: favorite.accuracy
         )
+        RuntimeLogger.info("APP", "坐标转换", "写入代理: WGS-84", details: [
+            "lat": String(wgs.lat),
+            "lon": String(wgs.lon)
+        ])
         state = .idle
         virtualLocationEnabled = true
         message = "虚拟定位已开启"

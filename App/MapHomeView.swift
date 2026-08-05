@@ -66,10 +66,11 @@ struct MapHomeView: View {
         self.setup = setup
         let savedCoord = LastCoordinateStore.load()
         let initialZoom = ViewportStore.loadOrDefault()
-        // 坐标：缓存 → 先给兜底深圳（启动后会由 initializeMap 按优先级覆盖）
+        // 持久化存的是 WGS-84，直接转当前瓦片坐标系显示
         let initialCoord: CLLocationCoordinate2D
         if let coord = savedCoord?.coordinate {
-            initialCoord = coord
+            let display = CoordinateConverter.toDisplay(lat: coord.latitude, lon: coord.longitude)
+            initialCoord = CLLocationCoordinate2D(latitude: display.lat, longitude: display.lon)
         } else {
             initialCoord = CLLocationCoordinate2D(latitude: 22.544577, longitude: 113.94114)
         }
@@ -89,10 +90,12 @@ struct MapHomeView: View {
                 },
                 onUserCenterChanged: { coordinate, distance in
                     mapState.updateViewport(distanceMeters: distance)
+                    CoordinateConverter.updateTileType(lat: coordinate.latitude, lon: coordinate.longitude)
                     let previousRevision = mapState.selection.revision
                     let revision = mapState.selectUserMapCenter(coordinate)
                     guard revision != previousRevision else { return }
-                    LastCoordinateStore.save(lat: coordinate.latitude, lon: coordinate.longitude)
+                    let wgs = CoordinateConverter.toStored(lat: coordinate.latitude, lon: coordinate.longitude)
+                    LastCoordinateStore.save(lat: wgs.lat, lon: wgs.lon)
                     favorites.select(nil)
                     scheduleGeocode(coordinate: coordinate, revision: revision)
                 },
@@ -101,35 +104,19 @@ struct MapHomeView: View {
                 },
                 onMapTap: { coordinate in
                     favorites.select(nil)
+                    CoordinateConverter.updateTileType(lat: coordinate.latitude, lon: coordinate.longitude)
                     let revision = mapState.selectMapTap(coordinate)
-                    LastCoordinateStore.save(lat: coordinate.latitude, lon: coordinate.longitude)
+                    let wgs = CoordinateConverter.toStored(lat: coordinate.latitude, lon: coordinate.longitude)
+                    LastCoordinateStore.save(lat: wgs.lat, lon: wgs.lon)
                     scheduleGeocode(coordinate: coordinate, revision: revision)
                 },
                 onUserZoomChanged: { distance in
                     ViewportStore.save(distance)
-                }
+                },
+                onZoomIn: { mapState.zoom(by: 0.5) },
+                onZoomOut: { mapState.zoom(by: 2) }
             )
-                .ignoresSafeArea()
-                .ignoresSafeArea(.keyboard)
-                .overlay {
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 38, weight: .semibold))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .red)
-                        .shadow(color: .black.opacity(0.28), radius: 5, y: 3)
-                        .offset(y: -19)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-
-            HStack {
-                zoomControls
-                Spacer()
-            }
-            .padding(.leading, 16)
-            .padding(.top, 130)
-            .allowsHitTesting(true)
-            .allowsHitTesting(true)
+                .ignoresSafeArea(.container)
 
             VStack(spacing: 10) {
                 topControls
@@ -195,12 +182,21 @@ struct MapHomeView: View {
         )) {
             Button("知道了", role: .cancel) {}
         } message: { Text(manualHint) }
-        .onAppear(perform: initializeMap)
+        .onAppear {
+            initializeMap()
+            NetworkMonitor.shared.onWiFiChanged = { [self] in
+                guard spoofState == .active else { return }
+                Task { @MainActor in
+                    let target = currentSelectionFavorite
+                    let result = await setup.runVerificationTest(testLat: target.latitude, testLon: target.longitude)
+                    if !result.isSuccess, let tip = result.tipKind {
+                        activeTip = tip
+                    }
+                }
+            }
+        }
         .onChange(of: net.isAirplaneMode) { airplane in
-            if airplane {
-                showEnableTip = true
-            } else {
-                showEnableTip = false
+            if !airplane {
                 Task { await setup.refreshTrust() }
             }
         }
@@ -362,14 +358,16 @@ struct MapHomeView: View {
                         return
                     }
                     let snapshot = currentSelectionFavorite
+                    let wgs = CoordinateConverter.toStored(lat: snapshot.latitude, lon: snapshot.longitude)
                     let favorite = favorites.save(
                         name: snapshot.name,
-                        latitude: snapshot.latitude,
-                        longitude: snapshot.longitude,
+                        latitude: wgs.lat,
+                        longitude: wgs.lon,
                         accuracy: snapshot.accuracy
                     )
+                    let display = CoordinateConverter.toDisplay(lat: favorite.latitude, lon: favorite.longitude)
                     mapState.selectFavorite(
-                        CLLocationCoordinate2D(latitude: favorite.latitude, longitude: favorite.longitude),
+                        CLLocationCoordinate2D(latitude: display.lat, longitude: display.lon),
                         id: favorite.id,
                         name: favorite.name
                     )
@@ -389,15 +387,6 @@ struct MapHomeView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) { ForEach(favorites.favorites) { f in favoriteChip(f) } }.padding(.vertical, 2)
-                }
-            }
-            // 飞行模式
-            if net.isAirplaneMode {
-                HStack {
-                    Image(systemName: "airplane").foregroundStyle(.orange)
-                    Text("飞行模式已开启").font(.caption).foregroundStyle(.orange)
-                    Spacer()
-                    Button("查看说明") { activeTip = .activation }.font(.caption).buttonStyle(.bordered).tint(.orange)
                 }
             }
             // 主控按钮（带动画）
@@ -504,12 +493,24 @@ struct MapHomeView: View {
                     activeSpoofLat = target.latitude
                     activeSpoofLon = target.longitude
                 }
+                RuntimeLogger.info("APP", "定位", "验证结果", details: [
+                    "success": "true",
+                    "applied": String(applied),
+                    "spoofState": String(describing: spoofState)
+                ])
                 if applied && !activationTipDisabled {
                     showEnableTip = true
                     activationTipCount += 1
                 }
             } else {
                 spoofState = actions.virtualLocationEnabled ? .active : .idle
+                RuntimeLogger.warning("APP", "定位", "验证失败", details: [
+                    "result": result.id,
+                    "spoofState": String(describing: spoofState)
+                ])
+                if let tip = result.tipKind {
+                    activeTip = tip
+                }
             }
             locationOperationTask = nil
         }
@@ -572,51 +573,14 @@ struct MapHomeView: View {
 
     private var testFavorite: FavoriteLocation { currentSelectionFavorite }
 
-    private var zoomControls: some View {
-        VStack(spacing: 0) {
-            Button {
-                mapState.zoom(by: 0.5)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .bold))
-                    .frame(width: 52, height: 52)
-            }
-            .accessibilityLabel("放大地图")
-
-            Divider().frame(width: 28)
-
-            Text(MapZoomMath.viewportScaleLabel(distanceMeters: mapState.viewportMeters))
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(width: 54, height: 28)
-                .accessibilityLabel("当前地图范围")
-                .accessibilityValue(MapZoomMath.viewportScaleLabel(distanceMeters: mapState.viewportMeters))
-
-            Divider().frame(width: 28)
-
-            Button {
-                mapState.zoom(by: 2)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 22, weight: .bold))
-                    .frame(width: 52, height: 52)
-            }
-            .accessibilityLabel("缩小地图")
-        }
-        .buttonStyle(.plain)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 7, y: 3)
-    }
-
     private func initializeMap() {
         guard !mapDidInitialize else { return }
         mapDidInitialize = true
 
         if let selected = favorites.selectedFavorite {
+            let display = CoordinateConverter.toDisplay(lat: selected.latitude, lon: selected.longitude)
             mapState.selectFavorite(
-                CLLocationCoordinate2D(latitude: selected.latitude, longitude: selected.longitude),
+                CLLocationCoordinate2D(latitude: display.lat, longitude: display.lon),
                 id: selected.id,
                 name: selected.name
             )
@@ -638,13 +602,13 @@ struct MapHomeView: View {
 
     private func requestRealtimeLocation() {
         let intent = mapState.beginRealtimeIntent()
-        if let nativeLocation = mapState.realtimeLocation,
-           abs(nativeLocation.timestamp.timeIntervalSinceNow) <= 30 {
-            acceptRealtimeLocation(nativeLocation.coordinate, intent: intent, source: "MapKit 实时位置")
+        // 蓝点存在就直接用，不限时（MKMapView 的 userLocation 只在位置变化时才更新）
+        if let loc = mapState.realtimeLocation {
+            acceptRealtimeLocation(loc.coordinate, intent: intent, source: "MapKit蓝点")
             return
         }
         startRealtimeLocationRequest(
-            source: "定位按钮兜底",
+            source: "CLLocationManager",
             showFailureAlert: true,
             intent: intent
         )
@@ -659,7 +623,7 @@ struct MapHomeView: View {
         // CLLocationManager fallback so the camera and dot cannot disagree.
         realtimeRequestContext = nil
         realtimeRequestTask?.cancel()
-        acceptRealtimeLocation(location.coordinate, intent: context.intent, source: "MapKit \(context.source)")
+        acceptRealtimeLocation(location.coordinate, intent: context.intent, source: "蓝点(途中)→\(context.source)")
     }
 
     private func startRealtimeLocationRequest(
@@ -711,7 +675,9 @@ struct MapHomeView: View {
         guard accepted else { return }
         // 用点击时的缩放级别居中，不改变缩放
         mapState.focusSelection(distanceMeters: currentViewport)
-        LastCoordinateStore.save(lat: coordinate.latitude, lon: coordinate.longitude)
+        CoordinateConverter.updateTileType(lat: coordinate.latitude, lon: coordinate.longitude)
+        let wgs = CoordinateConverter.toStored(lat: coordinate.latitude, lon: coordinate.longitude)
+        LastCoordinateStore.save(lat: wgs.lat, lon: wgs.lon)
         favorites.select(nil)
         scheduleGeocode(coordinate: coordinate, revision: mapState.selection.revision)
     }
@@ -842,8 +808,10 @@ struct MapHomeView: View {
         geocodeDebounceTask?.cancel()
         reverseGeocodeTask?.cancel()
         favorites.select(nil)
+        CoordinateConverter.updateTileType(lat: result.coordinate.latitude, lon: result.coordinate.longitude)
         mapState.selectSearchResult(result.coordinate, name: result.name)
-        LastCoordinateStore.save(lat: result.coordinate.latitude, lon: result.coordinate.longitude)
+        let wgs = CoordinateConverter.toStored(lat: result.coordinate.latitude, lon: result.coordinate.longitude)
+        LastCoordinateStore.save(lat: wgs.lat, lon: wgs.lon)
         searchText = result.name
         searchResults = []
         searchError = ""
@@ -857,8 +825,9 @@ struct MapHomeView: View {
         geocodeDebounceTask?.cancel()
         reverseGeocodeTask?.cancel()
         favorites.select(favorite.id)
+        let display = CoordinateConverter.toDisplay(lat: favorite.latitude, lon: favorite.longitude)
         mapState.selectFavorite(
-            CLLocationCoordinate2D(latitude: favorite.latitude, longitude: favorite.longitude),
+            CLLocationCoordinate2D(latitude: display.lat, longitude: display.lon),
             id: favorite.id,
             name: favorite.name
         )
