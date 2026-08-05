@@ -789,7 +789,7 @@ struct MapHomeView: View {
                     return
                 }
                 searchResults = (response?.mapItems ?? []).prefix(6).map { item in
-                    SearchLocationResult(
+                    let r = SearchLocationResult(
                         name: item.name ?? "未命名",
                         subtitle: [item.placemark.locality, item.placemark.subLocality, item.placemark.thoroughfare]
                             .compactMap { $0 }
@@ -797,6 +797,11 @@ struct MapHomeView: View {
                             .joined(separator: " · "),
                         coordinate: item.placemark.coordinate
                     )
+                    RuntimeLogger.info("APP", "搜索", "结果: \(r.name)", details: [
+                        "lat": String(r.coordinate.latitude),
+                        "lon": String(r.coordinate.longitude)
+                    ])
+                    return r
                 }
                 if searchResults.isEmpty { searchError = "没有找到相关地点" }
             }
