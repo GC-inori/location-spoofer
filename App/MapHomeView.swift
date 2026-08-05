@@ -185,6 +185,8 @@ let revision = mapState.selectMapTap(coordinate)
             NetworkMonitor.shared.onWiFiChanged = { [self] in
                 guard spoofState == .active else { return }
                 Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    guard spoofState == .active else { return }
                     let target = currentSelectionFavorite
                     let result = await setup.runVerificationTest(testLat: target.latitude, testLon: target.longitude)
                     if !result.isSuccess, let tip = result.tipKind {
