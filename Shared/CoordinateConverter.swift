@@ -39,14 +39,14 @@ enum CoordinateConverter {
     static func toStored(lat: Double, lon: Double) -> (lat: Double, lon: Double) {
         updateTileType(lat: lat, lon: lon)
         guard currentTileType == .gcj02 else {
-            RuntimeLogger.info("APP", "坐标转换", "toStored: WGS-84 → 不转", details: [
+            RuntimeLogger.info("APP", "坐标转换", "toStored: 不转 瓦片=\(currentTileType.rawValue)", details: [
                 "lat": String(lat), "lon": String(lon)
             ])
             return (lat, lon)
         }
         let wgs = gcj02ToWgs84(lat: lat, lon: lon)
         let d = distance(lat1: lat, lon1: lon, lat2: wgs.lat, lon2: wgs.lon)
-        RuntimeLogger.info("APP", "坐标转换", "toStored: GCJ-02 → WGS-84", details: [
+        RuntimeLogger.info("APP", "坐标转换", "toStored: GCJ-02 → WGS-84 瓦片=\(currentTileType.rawValue)", details: [
             "原始": "\(lat), \(lon)",
             "结果": "\(wgs.lat), \(wgs.lon)",
             "偏移": String(format: "%.0fm", d)
@@ -58,14 +58,14 @@ enum CoordinateConverter {
     @MainActor
     static func toDisplay(lat: Double, lon: Double) -> (lat: Double, lon: Double) {
         guard currentTileType == .gcj02 else {
-            RuntimeLogger.info("APP", "坐标转换", "toDisplay: WGS-84 → 不转", details: [
+            RuntimeLogger.info("APP", "坐标转换", "toDisplay: WGS-84 → 不转 瓦片=\(currentTileType.rawValue)", details: [
                 "lat": String(lat), "lon": String(lon)
             ])
             return (lat, lon)
         }
         let gcj = wgs84ToGcj02(lat: lat, lon: lon)
         let d = distance(lat1: lat, lon1: lon, lat2: gcj.lat, lon2: gcj.lon)
-        RuntimeLogger.info("APP", "坐标转换", "toDisplay: WGS-84 → GCJ-02", details: [
+        RuntimeLogger.info("APP", "坐标转换", "toDisplay: WGS-84 → GCJ-02 瓦片=\(currentTileType.rawValue)", details: [
             "原始": "\(lat), \(lon)",
             "结果": "\(gcj.lat), \(gcj.lon)",
             "偏移": String(format: "%.0fm", d)
