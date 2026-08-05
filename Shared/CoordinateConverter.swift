@@ -1,6 +1,5 @@
 import Foundation
 import CoreLocation
-import MapKit
 
 /// GCJ-02 (火星坐标) ↔ WGS-84 坐标转换。
 ///
@@ -32,12 +31,10 @@ enum CoordinateConverter {
         if let last = lastTileCheck, -last.timeIntervalSinceNow < 30 { return }
         tileCheckPending = true
         let loc = CLLocation(latitude: 22.283819, longitude: 114.158439)
-        let req = MKLocalSearch.Request()
-        req.region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 200, longitudinalMeters: 200)
-        MKLocalSearch(request: req).start { response, _ in
+        CLGeocoder().reverseGeocodeLocation(loc) { placemarks, _ in
             Task { @MainActor in
                 defer { tileCheckPending = false }
-                let name = response?.mapItems.first?.name ?? ""
+                let name = placemarks?.first?.name ?? ""
                 let newType: CoordType = (name == "林士街") ? .gcj02 : .wgs84
                 RuntimeLogger.info("APP", "坐标转换", "固定坐标反查 → \(newType.rawValue)", details: [
                     "名称": name
