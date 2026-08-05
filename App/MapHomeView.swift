@@ -722,6 +722,13 @@ struct MapHomeView: View {
                           mapState.selection.revision == revision,
                           let placemark = placemarks.first else { return }
 
+                    if let firstItem = mkResponse?.mapItems.first {
+                        RuntimeLogger.info("APP", "Geocode", "MKLocalSearch 坐标对比", details: [
+                            "输入坐标": "\(coordinate.latitude), \(coordinate.longitude)",
+                            "搜索返回坐标": "\(firstItem.placemark.coordinate.latitude), \(firstItem.placemark.coordinate.longitude)",
+                            "名称": firstItem.name ?? "nil"
+                        ])
+                    }
                     let mapItemName = mkResponse?.mapItems.first?.name?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let mapItemPOI = mkResponse?.mapItems.first?.placemark.areasOfInterest?.first
                     // 优先使⽤ MKLocalSearch 结果（与地图显⽰一致），CLGeocoder 作为 fallback
