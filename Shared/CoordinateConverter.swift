@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 /// GCJ-02 (火星坐标) ↔ WGS-84 坐标转换。
 ///
@@ -93,6 +94,17 @@ enum CoordinateConverter {
             return .gcj02
         }
         return .wgs84
+    }
+
+    /// 通过搜索结果坐标 + 蓝点推算瓦片类型（搜索结果在当期瓦片坐标系，蓝点是 WGS-84）
+    static func detectTile(resultCoord: (lat: Double, lon: Double), userLocation: CLLocation?) -> CoordType? {
+        guard let bl = userLocation,
+              CLLocationCoordinate2DIsValid(bl.coordinate),
+              bl.horizontalAccuracy >= 0 else { return nil }
+        let wgs = gcj02ToWgs84(lat: resultCoord.lat, lon: resultCoord.lon)
+        let dGCJ = distance(lat1: wgs.lat, lon1: wgs.lon, lat2: bl.coordinate.latitude, lon2: bl.coordinate.longitude)
+        let dRaw = distance(lat1: resultCoord.lat, lon1: resultCoord.lon, lat2: bl.coordinate.latitude, lon2: bl.coordinate.longitude)
+        return dGCJ < dRaw ? .gcj02 : .wgs84
     }
 
     // MARK: - 核心转换

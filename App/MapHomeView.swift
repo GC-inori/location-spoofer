@@ -795,7 +795,18 @@ struct MapHomeView: View {
                     searchError = error.localizedDescription
                     return
                 }
-                searchResults = (response?.mapItems ?? []).prefix(6).map { item in
+                let items = (response?.mapItems ?? []).prefix(6)
+                // 用首个搜索结果坐标推算瓦片类型
+                if let first = items.first {
+                    let c = first.placemark.coordinate
+                    if let newType = CoordinateConverter.detectTile(
+                        resultCoord: (c.latitude, c.longitude),
+                        userLocation: mapState.realtimeLocation
+                    ) {
+                        CoordinateConverter.currentTileType = newType
+                    }
+                }
+                searchResults = items.map { item in
                     let r = SearchLocationResult(
                         name: item.name ?? "未命名",
                         subtitle: [item.placemark.locality, item.placemark.subLocality, item.placemark.thoroughfare]

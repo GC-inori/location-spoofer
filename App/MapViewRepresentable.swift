@@ -260,25 +260,7 @@ struct MapViewRepresentable: UIViewRepresentable {
             parent.onViewportChanged(distance)
             zoomLabel?.text = MapZoomMath.viewportScaleLabel(distanceMeters: distance)
             updatePinPosition(on: mapView)
-            // 推算瓦片类型：比较地图中心与蓝点的偏移
-            // 蓝点是 WGS-84，地图中心在 GCJ-02 瓦片上会有 ~596m 偏移
-            let mc = mapView.centerCoordinate
-            if let bl = mapView.userLocation.location?.coordinate {
-                let wgs = CoordinateConverter.gcj02ToWgs84(lat: mc.latitude, lon: mc.longitude)
-                let dGCJ = CoordinateConverter.distance(lat1: wgs.lat, lon1: wgs.lon, lat2: bl.latitude, lon2: bl.longitude)
-                let dRaw = CoordinateConverter.distance(lat1: mc.latitude, lon1: mc.longitude, lat2: bl.latitude, lon2: bl.longitude)
-                // GCJ→WGS 后更接近蓝点 = 地图是 GCJ-02；原始更接近 = 地图是 WGS-84
-                let type: CoordinateConverter.CoordType = dGCJ < dRaw ? .gcj02 : .wgs84
-                if type != CoordinateConverter.currentTileType {
-                    CoordinateConverter.currentTileType = type
-                    RuntimeLogger.info("APP", "坐标转换", "推算瓦片 → \(type.rawValue)", details: [
-                        "dGCJ": String(format: "%.0fm", dGCJ), "dRaw": String(format: "%.0fm", dRaw)
-                    ])
-                }
-            } else {
-                // 无蓝点，用坐标地理边界兜底
-                CoordinateConverter.updateTileType(lat: mc.latitude, lon: mc.longitude)
-            }
+            // 同步蓝点坐标
             // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
             if let ul = mapView.userLocation.location,
                CLLocationCoordinate2DIsValid(ul.coordinate), ul.horizontalAccuracy >= 0 {
