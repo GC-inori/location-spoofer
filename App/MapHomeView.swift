@@ -574,6 +574,7 @@ let revision = mapState.selectMapTap(coordinate)
     private func initializeMap() {
         guard !mapDidInitialize else { return }
         mapDidInitialize = true
+        CoordinateConverter.detectTileByFixedGeocode()
 
         if let selected = favorites.selectedFavorite {
             let display = CoordinateConverter.toDisplay(lat: selected.latitude, lon: selected.longitude)
