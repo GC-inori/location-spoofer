@@ -675,9 +675,8 @@ struct MapHomeView: View {
         guard accepted else { return }
         // 用点击时的缩放级别居中，不改变缩放
         mapState.focusSelection(distanceMeters: currentViewport)
-        CoordinateConverter.updateTileType(lat: coordinate.latitude, lon: coordinate.longitude)
-        let wgs = CoordinateConverter.toStored(lat: coordinate.latitude, lon: coordinate.longitude)
-        LastCoordinateStore.save(lat: wgs.lat, lon: wgs.lon)
+        // 蓝点坐标已是 WGS-84，直接存，不需要 toStored
+        LastCoordinateStore.save(lat: coordinate.latitude, lon: coordinate.longitude)
         favorites.select(nil)
         scheduleGeocode(coordinate: coordinate, revision: mapState.selection.revision)
     }
