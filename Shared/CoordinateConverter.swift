@@ -20,7 +20,7 @@ enum CoordinateConverter {
     /// 当前地图瓦片坐标系（每次从地图拿到坐标后更新）
     @MainActor static var currentTileType = CoordType.gcj02
 
-    /// 从地图坐标推算当前瓦片类型并更新全局状态
+    /// 根据坐标的地理位置判断 MKMapView 瓦片类型（中国境内 = GCJ-02，境外 = WGS-84）
     @MainActor
     static func updateTileType(lat: Double, lon: Double) {
         let type = detectType(lat: lat, lon: lon)

@@ -260,7 +260,7 @@ struct MapViewRepresentable: UIViewRepresentable {
             parent.onViewportChanged(distance)
             zoomLabel?.text = MapZoomMath.viewportScaleLabel(distanceMeters: distance)
             updatePinPosition(on: mapView)
-            // 每次地图区域变化时更新瓦片坐标系类型
+            // 根据地图中心坐标地理位置判断瓦片类型（中国境内=GCJ-02，境外=WGS-84）
             let c = mapView.centerCoordinate
             CoordinateConverter.updateTileType(lat: c.latitude, lon: c.longitude)
             // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
