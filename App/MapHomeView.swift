@@ -90,8 +90,7 @@ struct MapHomeView: View {
                 },
                 onUserCenterChanged: { coordinate, distance in
                     mapState.updateViewport(distanceMeters: distance)
-                    CoordinateConverter.updateTileType(lat: coordinate.latitude, lon: coordinate.longitude)
-                    let previousRevision = mapState.selection.revision
+let previousRevision = mapState.selection.revision
                     let revision = mapState.selectUserMapCenter(coordinate)
                     guard revision != previousRevision else { return }
                     let wgs = CoordinateConverter.toStored(lat: coordinate.latitude, lon: coordinate.longitude)
@@ -104,8 +103,7 @@ struct MapHomeView: View {
                 },
                 onMapTap: { coordinate in
                     favorites.select(nil)
-                    CoordinateConverter.updateTileType(lat: coordinate.latitude, lon: coordinate.longitude)
-                    let revision = mapState.selectMapTap(coordinate)
+let revision = mapState.selectMapTap(coordinate)
                     let wgs = CoordinateConverter.toStored(lat: coordinate.latitude, lon: coordinate.longitude)
                     LastCoordinateStore.save(lat: wgs.lat, lon: wgs.lon)
                     scheduleGeocode(coordinate: coordinate, revision: revision)
@@ -795,18 +793,7 @@ struct MapHomeView: View {
                     searchError = error.localizedDescription
                     return
                 }
-                let items = (response?.mapItems ?? []).prefix(6)
-                // 用首个搜索结果坐标推算瓦片类型
-                if let first = items.first {
-                    let c = first.placemark.coordinate
-                    if let newType = CoordinateConverter.detectTile(
-                        resultCoord: (c.latitude, c.longitude),
-                        userLocation: mapState.realtimeLocation
-                    ) {
-                        CoordinateConverter.currentTileType = newType
-                    }
-                }
-                searchResults = items.map { item in
+                searchResults = (response?.mapItems ?? []).prefix(6).map { item in
                     let r = SearchLocationResult(
                         name: item.name ?? "未命名",
                         subtitle: [item.placemark.locality, item.placemark.subLocality, item.placemark.thoroughfare]
@@ -830,7 +817,6 @@ struct MapHomeView: View {
         geocodeDebounceTask?.cancel()
         reverseGeocodeTask?.cancel()
         favorites.select(nil)
-        CoordinateConverter.updateTileType(lat: result.coordinate.latitude, lon: result.coordinate.longitude)
         mapState.selectSearchResult(result.coordinate, name: result.name)
         let wgs = CoordinateConverter.toStored(lat: result.coordinate.latitude, lon: result.coordinate.longitude)
         LastCoordinateStore.save(lat: wgs.lat, lon: wgs.lon)

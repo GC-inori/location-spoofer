@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 /// GCJ-02 (火星坐标) ↔ WGS-84 坐标转换。
 ///
@@ -18,18 +19,38 @@ enum CoordinateConverter {
 
     // MARK: - 全局瓦片类型
 
-    /// 当前地图瓦片坐标系（每次从地图拿到坐标后更新）
+    /// 当前地图瓦片坐标系
     @MainActor static var currentTileType = CoordType.gcj02
+    /// 瓦片检测缓存
+    @MainActor private static var lastTileCheck: Date?
+    @MainActor private static var tileCheckPending = false
 
-    /// 根据坐标的地理位置判断 MKMapView 瓦片类型（中国境内 = GCJ-02，境外 = WGS-84）
+    /// 后台反查坐标地名：返回中文名称 → GCJ-02，否则 → WGS-84（30s 缓存）
     @MainActor
-    static func updateTileType(lat: Double, lon: Double) {
-        let type = detectType(lat: lat, lon: lon)
-        if type != currentTileType {
-            currentTileType = type
-            RuntimeLogger.info("APP", "坐标转换", "地图瓦片切换 → \(type.rawValue)", details: [
-                "坐标": "\(lat), \(lon)"
-            ])
+    private static func detectTileByGeocode(lat: Double, lon: Double) {
+        guard !tileCheckPending else { return }
+        if let last = lastTileCheck, -last.timeIntervalSinceNow < 30 { return }
+        tileCheckPending = true
+        let loc = CLLocation(latitude: lat, longitude: lon)
+        let req = MKLocalSearch.Request()
+        req.region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 200, longitudinalMeters: 200)
+        MKLocalSearch(request: req).start { response, _ in
+            Task { @MainActor in
+                defer { tileCheckPending = false }
+                guard let name = response?.mapItems.first?.name else {
+                    RuntimeLogger.info("APP", "坐标转换", "反查地名: 无结果", details: ["坐标": "\(lat), \(lon)"])
+                    return
+                }
+                let hasChinese = name.unicodeScalars.contains { $0.value >= 0x4E00 && $0.value <= 0x9FFF }
+                let newType: CoordType = hasChinese ? .gcj02 : .wgs84
+                RuntimeLogger.info("APP", "坐标转换", "反查地名: \(name) → \(newType.rawValue)", details: [
+                    "含中文": String(hasChinese), "坐标": "\(lat), \(lon)"
+                ])
+                if newType != currentTileType {
+                    currentTileType = newType
+                }
+                lastTileCheck = Date()
+            }
         }
     }
 
@@ -38,7 +59,7 @@ enum CoordinateConverter {
     /// 地图坐标 → WGS-84 存储
     @MainActor
     static func toStored(lat: Double, lon: Double) -> (lat: Double, lon: Double) {
-        updateTileType(lat: lat, lon: lon)
+        detectTileByGeocode(lat: lat, lon: lon)
         guard currentTileType == .gcj02 else {
             RuntimeLogger.info("APP", "坐标转换", "toStored: 不转 瓦片=\(currentTileType.rawValue)", details: [
                 "lat": String(lat), "lon": String(lon)
@@ -58,6 +79,7 @@ enum CoordinateConverter {
     /// WGS-84 存储 → 当前地图瓦片坐标系（显示用）
     @MainActor
     static func toDisplay(lat: Double, lon: Double) -> (lat: Double, lon: Double) {
+        detectTileByGeocode(lat: lat, lon: lon)
         guard currentTileType == .gcj02 else {
             RuntimeLogger.info("APP", "坐标转换", "toDisplay: WGS-84 → 不转 瓦片=\(currentTileType.rawValue)", details: [
                 "lat": String(lat), "lon": String(lon)
@@ -74,7 +96,7 @@ enum CoordinateConverter {
         return gcj
     }
 
-    // MARK: - 类型检测
+    // MARK: - 工具
 
     /// Haversine 距离（米）
     static func distance(lat1: Double, lon1: Double, lat2: Double, lon2: Double) -> Double {
@@ -85,26 +107,6 @@ enum CoordinateConverter {
               + cos(lat1 * .pi / 180.0) * cos(lat2 * .pi / 180.0)
               * sin(dLon / 2) * sin(dLon / 2)
         return r * 2 * atan2(sqrt(a), sqrt(1 - a))
-    }
-
-    /// MKMapView 瓦片坐标系：中国境内 GCJ-02，境外 WGS-84
-    static func detectType(lat: Double, lon: Double) -> CoordType {
-        // GCJ-02 加密只在中国境内生效，用地理边界判断
-        if lat > 17.5 && lat < 54.0 && lon > 72.5 && lon < 136.0 {
-            return .gcj02
-        }
-        return .wgs84
-    }
-
-    /// 通过搜索结果坐标 + 蓝点推算瓦片类型（搜索结果在当期瓦片坐标系，蓝点是 WGS-84）
-    static func detectTile(resultCoord: (lat: Double, lon: Double), userLocation: CLLocation?) -> CoordType? {
-        guard let bl = userLocation,
-              CLLocationCoordinate2DIsValid(bl.coordinate),
-              bl.horizontalAccuracy >= 0 else { return nil }
-        let wgs = gcj02ToWgs84(lat: resultCoord.lat, lon: resultCoord.lon)
-        let dGCJ = distance(lat1: wgs.lat, lon1: wgs.lon, lat2: bl.coordinate.latitude, lon2: bl.coordinate.longitude)
-        let dRaw = distance(lat1: resultCoord.lat, lon1: resultCoord.lon, lat2: bl.coordinate.latitude, lon2: bl.coordinate.longitude)
-        return dGCJ < dRaw ? .gcj02 : .wgs84
     }
 
     // MARK: - 核心转换
