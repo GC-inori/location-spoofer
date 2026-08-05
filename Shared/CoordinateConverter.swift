@@ -25,26 +25,22 @@ enum CoordinateConverter {
     @MainActor private static var lastTileCheck: Date?
     @MainActor private static var tileCheckPending = false
 
-    /// 后台反查坐标地名：返回中文名称 → GCJ-02，否则 → WGS-84（30s 缓存）
+    /// 固定坐标反查：返回"林士街"=GCJ-02高德瓦片，否则=WGS-84（30s缓存）
     @MainActor
-    private static func detectTileByGeocode(lat: Double, lon: Double) {
+    static func detectTileByFixedGeocode() {
         guard !tileCheckPending else { return }
         if let last = lastTileCheck, -last.timeIntervalSinceNow < 30 { return }
         tileCheckPending = true
-        let loc = CLLocation(latitude: lat, longitude: lon)
+        let loc = CLLocation(latitude: 22.283819, longitude: 114.158439)
         let req = MKLocalSearch.Request()
         req.region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 200, longitudinalMeters: 200)
         MKLocalSearch(request: req).start { response, _ in
             Task { @MainActor in
                 defer { tileCheckPending = false }
-                guard let name = response?.mapItems.first?.name else {
-                    RuntimeLogger.info("APP", "坐标转换", "反查地名: 无结果", details: ["坐标": "\(lat), \(lon)"])
-                    return
-                }
-                let hasChinese = name.unicodeScalars.contains { $0.value >= 0x4E00 && $0.value <= 0x9FFF }
-                let newType: CoordType = hasChinese ? .gcj02 : .wgs84
-                RuntimeLogger.info("APP", "坐标转换", "反查地名: \(name) → \(newType.rawValue)", details: [
-                    "含中文": String(hasChinese), "坐标": "\(lat), \(lon)"
+                let name = response?.mapItems.first?.name ?? ""
+                let newType: CoordType = (name == "林士街") ? .gcj02 : .wgs84
+                RuntimeLogger.info("APP", "坐标转换", "固定坐标反查 → \(newType.rawValue)", details: [
+                    "名称": name
                 ])
                 if newType != currentTileType {
                     currentTileType = newType
@@ -59,7 +55,7 @@ enum CoordinateConverter {
     /// 地图坐标 → WGS-84 存储
     @MainActor
     static func toStored(lat: Double, lon: Double) -> (lat: Double, lon: Double) {
-        detectTileByGeocode(lat: lat, lon: lon)
+        detectTileByFixedGeocode()
         guard currentTileType == .gcj02 else {
             RuntimeLogger.info("APP", "坐标转换", "toStored: 不转 瓦片=\(currentTileType.rawValue)", details: [
                 "lat": String(lat), "lon": String(lon)
@@ -79,7 +75,7 @@ enum CoordinateConverter {
     /// WGS-84 存储 → 当前地图瓦片坐标系（显示用）
     @MainActor
     static func toDisplay(lat: Double, lon: Double) -> (lat: Double, lon: Double) {
-        detectTileByGeocode(lat: lat, lon: lon)
+        detectTileByFixedGeocode()
         guard currentTileType == .gcj02 else {
             RuntimeLogger.info("APP", "坐标转换", "toDisplay: WGS-84 → 不转 瓦片=\(currentTileType.rawValue)", details: [
                 "lat": String(lat), "lon": String(lon)
