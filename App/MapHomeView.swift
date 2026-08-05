@@ -238,7 +238,7 @@ struct MapHomeView: View {
         HStack(spacing: 10) {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("搜索地点", text: $searchText)
+                TextField("搜索地点或坐标", text: $searchText)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).onSubmit(doSearch)
                 if isSearching { ProgressView().controlSize(.small) }
                 else if !searchText.isEmpty {
