@@ -239,7 +239,7 @@ struct MapViewRepresentable: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
-            guard let location = userLocation.location else {
+            guard let location = visibleUserLocationSample(userLocation) else {
                 RuntimeLogger.warning("APP", "实时定位", "MapKit 蓝点更新但 location 为空", details: [
                     "来源": "MKMapView.didUpdate"
                 ])
@@ -257,9 +257,6 @@ struct MapViewRepresentable: UIViewRepresentable {
                 ], level: .warning)
                 return
             }
-            RealtimeLocationTrace.log("收到 MapKit 可见蓝点样本", location: location, details: [
-                "来源": "MKMapView.didUpdate"
-            ])
             forwardRealtimeLocation(location)
         }
 
@@ -291,12 +288,9 @@ struct MapViewRepresentable: UIViewRepresentable {
             zoomLabel?.text = MapZoomMath.viewportScaleLabel(distanceMeters: distance)
             updatePinPosition(on: mapView)
             // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
-            if let ul = mapView.userLocation.location,
+            if let ul = visibleUserLocationSample(mapView.userLocation),
                CLLocationCoordinate2DIsValid(ul.coordinate), ul.horizontalAccuracy >= 0 {
                 if lastForwardedRealtimeTimestamp.map({ ul.timestamp > $0 }) ?? true {
-                    RealtimeLocationTrace.log("区域变化后同步到较新的 MapKit 蓝点样本", location: ul, details: [
-                        "来源": "MKMapView.regionDidChange"
-                    ])
                     forwardRealtimeLocation(ul)
                 }
             }
@@ -325,6 +319,23 @@ struct MapViewRepresentable: UIViewRepresentable {
         private func forwardRealtimeLocation(_ location: CLLocation) {
             lastForwardedRealtimeTimestamp = location.timestamp
             parent.onRealtimeLocationChanged(location)
+        }
+
+        /// `MKUserLocation.coordinate` is the coordinate of the blue-point
+        /// annotation in the current map representation. Keep the native
+        /// accuracy/timestamp metadata, but do not replace it with the raw
+        /// Core Location coordinate carried by `location.coordinate`.
+        private func visibleUserLocationSample(_ userLocation: MKUserLocation) -> CLLocation? {
+            guard let native = userLocation.location else { return nil }
+            return CLLocation(
+                coordinate: userLocation.coordinate,
+                altitude: native.altitude,
+                horizontalAccuracy: native.horizontalAccuracy,
+                verticalAccuracy: native.verticalAccuracy,
+                course: native.course,
+                speed: native.speed,
+                timestamp: native.timestamp
+            )
         }
 
         private func visibleVerticalDistance(in map: MKMapView) -> CLLocationDistance {

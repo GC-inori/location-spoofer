@@ -82,6 +82,46 @@ final class FavoriteLocationStoreTests: XCTestCase {
         XCTAssertFalse(pair.matchesWGS84(latitude: gcj.latitude, longitude: gcj.longitude))
     }
 
+    func testCoordinateRepresentationDiagnosisDistinguishesDomesticPair() {
+        let pair = CoordinateConverter.coordinatePair(
+            lat: 22.539,
+            lon: 113.934,
+            mapCoordinateSystem: .wgs84
+        )
+
+        XCTAssertEqual(
+            CoordinateConverter.diagnoseRepresentation(sample: pair.wgs84.coordinate, pair: pair).inferredSystem,
+            .wgs84
+        )
+        XCTAssertEqual(
+            CoordinateConverter.diagnoseRepresentation(sample: pair.gcj02.coordinate, pair: pair).inferredSystem,
+            .gcj02
+        )
+    }
+
+    func testCoordinateRepresentationDiagnosisKeepsOverseasIdentityPairAmbiguous() {
+        let pair = CoordinateConverter.coordinatePair(
+            lat: 48.858_37,
+            lon: 2.294_481,
+            mapCoordinateSystem: .wgs84
+        )
+
+        XCTAssertNil(
+            CoordinateConverter.diagnoseRepresentation(sample: pair.wgs84.coordinate, pair: pair).inferredSystem
+        )
+    }
+
+    func testCoordinateRepresentationDiagnosisRejectsUnrelatedSample() {
+        let pair = CoordinateConverter.coordinatePair(
+            lat: 22.539,
+            lon: 113.934,
+            mapCoordinateSystem: .wgs84
+        )
+        let unrelated = CLLocationCoordinate2D(latitude: 31.2304, longitude: 121.4737)
+
+        XCTAssertNil(CoordinateConverter.diagnoseRepresentation(sample: unrelated, pair: pair).inferredSystem)
+    }
+
     func testMapConfigurationNeverRequestsRealUserLocation() {
         XCTAssertFalse(MapConfiguration.default.showsUserLocation)
         XCTAssertFalse(MapConfiguration.default.allowsCurrentLocationRequest)

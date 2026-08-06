@@ -7,6 +7,8 @@ struct BugReportView: View {
     @State private var isReproducible = true
     @State private var isRunning = false
     @State private var showCopiedAlert = false
+    @ObservedObject private var runtimeMode = ProxyRuntimeModeStore.shared
+    @ObservedObject private var thirdPartyProxy = ThirdPartyProxyManager.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,9 +87,19 @@ struct BugReportView: View {
     private func generateReport() {
         isRunning = true
         Task {
-            // 跑测试
-            _ = await setup.runVerificationTest()
-            let testLog = setup.testLog
+            let testLog: String
+            if runtimeMode.mode == .thirdParty {
+                do {
+                    let response = try await thirdPartyProxy.query()
+                    let active = response.success && response.latitude != nil && response.longitude != nil
+                    testLog = "第三方代理测试模式：模块连接成功；已保存坐标=\(active ? "是" : "否")"
+                } catch {
+                    testLog = "第三方代理测试模式：模块连接失败；\(error.localizedDescription)"
+                }
+            } else {
+                _ = await setup.runVerificationTest()
+                testLog = setup.testLog
+            }
 
             // 获取版本信息
             let appVersion: String = {
@@ -102,6 +114,7 @@ struct BugReportView: View {
             ### 环境信息
             App 版本: \(appVersion)
             系统版本: iOS \(systemVersion)
+            运行模式: \(runtimeMode.mode.displayName)
             可复现环境: \(isReproducible ? "是" : "否")
 
             ### 问题描述

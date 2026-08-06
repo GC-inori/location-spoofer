@@ -23,6 +23,12 @@
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>App-Prefs</string>
+		<string>shadowrocket</string>
+		<string>surge</string>
+		<string>quantumult-x</string>
+		<string>loon</string>
+		<string>stash</string>
+		<string>egern</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
@@ -33,7 +39,7 @@
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<true/>
+		<false/>
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>

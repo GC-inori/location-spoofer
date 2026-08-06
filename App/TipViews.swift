@@ -11,6 +11,7 @@ enum TipKind: String, Identifiable {
 
 struct TipSheetView: View {
     let kind: TipKind
+    var runtimeMode: ProxyRuntimeMode = .localWiFi
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -18,8 +19,8 @@ struct TipSheetView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     switch kind {
-                    case .activation: ActivationTipContent(dismiss: { dismiss() })
-                    case .deactivation: DeactivationTipContent(dismiss: { dismiss() })
+                    case .activation: ActivationTipContent(runtimeMode: runtimeMode, dismiss: { dismiss() })
+                    case .deactivation: DeactivationTipContent(runtimeMode: runtimeMode, dismiss: { dismiss() })
                     case .removeProxy: RemoveProxyTipContent(dismiss: { dismiss() })
                     case .proxySetup: ProxySetupTipContent(dismiss: { dismiss() })
                     case .rewriteFailed: RewriteFailedTipContent(dismiss: { dismiss() })
@@ -65,15 +66,19 @@ private struct TipCloseButton: View {
 // MARK: - 生效说明
 
 struct ActivationTipContent: View {
+    var runtimeMode: ProxyRuntimeMode = .localWiFi
     let dismiss: () -> Void
 
     var body: some View {
         GroupBox(label: Label("让虚拟定位生效", systemImage: "checklist")) {
             VStack(alignment: .leading, spacing: 10) {
+                if runtimeMode == .thirdParty {
+                    step(0, "确认第三方代理已开启", "保持已导入的 WLOC 模块、HTTPS 解密和第三方代理/VPN 连接开启。")
+                }
                 step(1, "开启飞行模式", "从控制中心打开飞行模式（点飞机图标），Wi‑Fi 会自动断开。这是为了清除 iOS 的定位缓存。等待 2 秒。")
                 step(2, "关闭 Wi‑Fi", "从控制中心再点一下 Wi‑Fi 图标，确认 Wi‑Fi 已关闭。等待 2 秒。")
                 systemStep(3, "关闭系统定位服务", "打开系统「设置 → 隐私与安全性 → 定位服务」，关闭顶部的总开关。等待 2 秒。")
-                step(4, "打开 Wi‑Fi，启动虚拟定位", "从控制中心打开 Wi‑Fi（飞行模式保持开启），进入 App 点底部「开始虚拟定位」。等待 2 秒。")
+                step(4, "打开 Wi‑Fi，启动虚拟定位", runtimeMode == .thirdParty ? "从控制中心打开 Wi‑Fi（飞行模式保持开启），确认第三方代理已连接。坐标已经同步到第三方代理。等待 2 秒。" : "从控制中心打开 Wi‑Fi（飞行模式保持开启），进入 App 点底部「开始虚拟定位」。等待 2 秒。")
                 step(5, "关闭飞行模式", "从控制中心关闭飞行模式。等待 2 秒。")
                 systemStep(6, "重新开启定位服务", "再次进入「设置 → 隐私与安全性 → 定位服务」，打开总开关。完成后打开地图验证定位是否已变化。")
             }.padding(.vertical, 4)
@@ -117,6 +122,7 @@ struct ActivationTipContent: View {
 // MARK: - 失效说明
 
 struct DeactivationTipContent: View {
+    var runtimeMode: ProxyRuntimeMode = .localWiFi
     let dismiss: () -> Void
 
     var body: some View {
@@ -125,7 +131,11 @@ struct DeactivationTipContent: View {
                 step(1, "开启飞行模式", "从控制中心打开飞行模式，Wi‑Fi 会自动断开。等待 2 秒。")
                 step(2, "关闭 Wi‑Fi", "从控制中心确认 Wi‑Fi 已关闭。等待 2 秒。")
                 systemStep(3, "关闭系统定位服务", "打开「设置 → 隐私与安全性 → 定位服务」，关闭总开关。等待 2 秒。")
-                systemStep(4, "打开 Wi‑Fi，移除代理", "从控制中心打开 Wi‑Fi。然后进入「设置 → 无线局域网 → 点 WiFi 右侧 (i) → HTTP 代理」，选择「关闭」后存储。等待 2 秒。")
+                if runtimeMode == .thirdParty {
+                    step(4, "确认坐标已清除", "App 已通知第三方代理清除虚拟坐标。保持网络可用并等待 2 秒，让系统重新获取真实定位。")
+                } else {
+                    systemStep(4, "打开 Wi‑Fi，移除代理", "从控制中心打开 Wi‑Fi。然后进入「设置 → 无线局域网 → 点 WiFi 右侧 (i) → HTTP 代理」，选择「关闭」后存储。等待 2 秒。")
+                }
                 step(5, "关闭飞行模式", "从控制中心关闭飞行模式。等待 2 秒。")
                 systemStep(6, "重新开启定位服务", "再次进入「设置 → 隐私与安全性 → 定位服务」打开总开关。打开地图验证定位是否恢复。")
             }.padding(.vertical, 4)

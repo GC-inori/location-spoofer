@@ -29,19 +29,28 @@ final class BackgroundKeepAlive {
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             RuntimeLogger.error("APP", "KeepAlive", "音频会话失败", error: error)
+            isActive = false
+            return
         }
 
         let eng = AVAudioEngine()
         let player = AVAudioPlayerNode()
         eng.attach(player)
-        let fmt = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
-        let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: 44100 * 3)!
+        guard let fmt = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1),
+              let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: 44100 * 3) else {
+            RuntimeLogger.error("APP", "KeepAlive", "无法创建静音音频缓冲区")
+            isActive = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            return
+        }
         buf.frameLength = 44100 * 3
         eng.connect(player, to: eng.mainMixerNode, format: fmt)
         eng.prepare()
         do { try eng.start() } catch {
             RuntimeLogger.error("APP", "KeepAlive", "引擎启动失败", error: error)
-            isActive = false; return
+            isActive = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            return
         }
         player.scheduleBuffer(buf, at: nil, options: .loops)
         player.play()

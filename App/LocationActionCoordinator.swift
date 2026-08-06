@@ -103,7 +103,11 @@ final class LocationActionCoordinator: ObservableObject {
             enabled: true,
             accuracy: favorite.accuracy
         )
-        RuntimeLogger.info("APP", "坐标转换", "已向代理写入 WGS-84 坐标", details: [
+        RuntimeLogger.info("APP", "坐标转换", "设置虚拟定位坐标", details: [
+            "WLOC写入标准": CoordinateConverter.MapCoordinateSystem.wgs84.diagnosticName,
+            "当前地图标准": CoordinateConverter.currentMapCoordinateSystem.diagnosticName,
+            "目标所在区域": CoordinateConverter.usesGCJ02ServiceArea(lat: wgs.latitude, lon: wgs.longitude) ? "国内转换区域" : "国外非转换区域",
+            "取值字段": "coordinatePair.wgs84",
             "accuracy": String(favorite.accuracy)
         ])
         state = .idle

@@ -4,14 +4,14 @@
 
 ### iOS Location Spoofer · DingTalk · WeChat · Apple Watch Region Unlock · Fake GPS
 
-**No VPN, no jailbreak — run a local HTTP proxy on your iPhone to rewrite Apple location responses.**<br>
+**No jailbreak — use App Mode's on-device Wi-Fi HTTP proxy or Third-party Proxy Mode (Wi-Fi/4G/5G) to rewrite Apple location responses.**<br>
 Works with DingTalk check-in, WeChat location sharing, and any app that uses system location. Map selection, real-time location, environment verification, certificate setup, and runtime logs in a single app.
 
 [![iOS 15+](https://img.shields.io/badge/iOS-15%2B-111111?logo=apple)](project.yml)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white)](project.yml)
 [![Go 1.23+](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)](Core/go.mod)
-[![Version](https://img.shields.io/badge/version-v1.0.0-2563EB)](docs/CHANGELOG.md)
-[![No VPN](https://img.shields.io/badge/VPN-Not%20needed-16A34A)](#why-no-vpn)
+[![Version](https://img.shields.io/badge/version-v1.0.1-2563EB)](docs/CHANGELOG.md)
+[![App Mode](https://img.shields.io/badge/App%20Mode-No%20VPN-16A34A)](#why-no-vpn)
 
 [Features](#key-features) · [Quick Start](#quick-start) · [中文](README.md) · [Changelog](docs/CHANGELOG.md)
 
@@ -20,7 +20,7 @@ Works with DingTalk check-in, WeChat location sharing, and any app that uses sys
 </div>
 
 > [!IMPORTANT]
-> This project is intended for education, security research, and testing on your own devices. It installs a locally generated CA certificate and requires a manual HTTP proxy on the current Wi‑Fi network. Please understand the risks and follow applicable laws and service terms.
+> This project is intended for education, security research, and testing on your own devices. App Mode installs a locally generated CA and requires a manual HTTP proxy on the current Wi-Fi network. In Third-party Proxy Mode, the selected client owns certificate, MITM, and proxy/VPN setup. Please understand the risks and follow applicable laws and service terms.
 
 ## Credits
 
@@ -32,7 +32,7 @@ Unlike tools that require a computer to stay connected, a VPN tunnel, or a jailb
 
 | Feature | Description |
 |---|---|
-| 🚫 **No VPN** | No VPN tunnel — uses only location permission, no background refresh or notification access required. |
+| 🔀 **Two runtime modes** | Stable App Mode, plus a Third-party Proxy Mode under testing for Wi-Fi, 4G, and 5G. |
 | 📱 **No jailbreak** | Can be installed through self-signing; minimum deployment target is iOS 15. |
 | 🗺️ **Native Maps experience** | The same blue dot and selection gestures as Apple Maps — search, tap, and drag. |
 | 📍 **System-level location spoofing** | Works with DingTalk, WeChat, Apple Maps, Amap, and other apps for real-time fake GPS. |
@@ -54,8 +54,9 @@ Unlike tools that require a computer to stay connected, a VPN tunnel, or a jailb
 - **Hierarchical place names**: POI, street, or road at close zoom; neighborhood, district, city, or province at wider zoom.
 - **Map scale display**: Zoom controls show the current visible range.
 - **Favorites with quick switch**: Save frequent coordinates and see which location is about to be applied.
-- **Setup guide**: Certificate download, installation, full trust, Wi‑Fi HTTP proxy, activation, and deactivation instructions.
+- **Mode-specific setup**: Choose a mode first; App Mode guides local proxy and CA setup, while Third-party Proxy Mode guides client selection, configuration import, and API verification.
 - **Built-in diagnostics**: Verification flow and structured runtime logs.
+- **Third-party Proxy Mode (testing)**: Send a favorite or current pin as WGS-84 to a supported proxy module; the proxy client persists it after this App exits.
 
 ## Quick Start
 
@@ -64,9 +65,21 @@ Unlike tools that require a computer to stay connected, a VPN tunnel, or a jailb
 - Download a build from [Releases](https://github.com/xweiba/location-spoofer/releases) and self-sign; or
 - Build from source on macOS with Xcode — see the [build guide](docs/BUILD.md).
 
-Detailed steps in the [self-signing guide](docs/SELF-SIGNING.md).
+The release asset is an unsigned IPA. Sign it with [Impact](https://github.com/claration/Impactor) before installation. Keep the app Bundle ID `com.paopaolabs.location-spoofer`, the App Group `group.com.paopaolabs.location-spoofer`, and the declared entitlements unchanged. A free Apple ID signature normally expires after seven days and must then be renewed.
 
-### 2. Install & Trust the CA
+### 2. Choose a Runtime Mode
+
+#### App Mode
+
+Choose App Mode during first launch, then configure `127.0.0.1:8888` and fully trust the locally generated CA. It has no third-party client dependency but supports Wi-Fi only. Free self-signed apps cannot use the VPN/Network Extension capability required for cellular interception, so this mode uses the current Wi-Fi's manual HTTP proxy.
+
+#### Third-party Proxy Mode
+
+The App handles map selection, favorites, and WGS-84 coordinate delivery. A third-party proxy client handles WLOC interception, MITM, and persistence over Wi-Fi, 4G, or 5G. This mode skips the App's local proxy and CA checks.
+
+Shadowrocket is the only client currently available for device testing. Surge, Quantumult X, Loon, Stash, and Egern configurations are provided but unverified. The App lets the user copy the official subscription URL and open the selected client; the URL is then pasted into that client's module, rewrite, or override subscription UI. Configuration snapshots remain bundled for release provenance and offline inspection, but the setup UI does not export files. Egern uses the Surge module, and Stash imports `.stoverride` directly without Script Hub conversion. The third-party client—not this App—owns MITM, certificate, and proxy/VPN setup. Snapshot provenance is recorded in [the module snapshot document](docs/THIRD_PARTY_MODULES.md).
+
+### 3. Local-mode CA Setup
 
 Follow the first-setup wizard to download the profile, then:
 
@@ -75,7 +88,7 @@ Settings → General → VPN & Device Management → install WLOC CA
 Settings → General → About → Certificate Trust Settings → enable full trust
 ```
 
-### 3. Configure the Current Wi‑Fi Proxy
+Configure the current Wi-Fi proxy before installing the CA:
 
 On the current Wi‑Fi's proxy settings, choose "Manual":
 
@@ -88,7 +101,7 @@ Authentication: off
 ### 4. Select a Location & Enable
 
 1. Search, tap, or drag the map to pick a location; tap the real-time location button to jump to the MapKit blue dot.
-2. Tap "Start Spoofing" and wait for the environment check to pass.
+2. In App Mode, tap “Start Spoofing” and wait for verification. In Third-party Proxy Mode, tap “Sync to Third-party Proxy.”
 3. Follow the in‑app activation instructions to refresh airplane mode, Wi‑Fi, and location services.
 4. Open Apple Maps or your target app to verify.
 
@@ -111,7 +124,7 @@ Apple location service response
 The system and applications receive the modified result
 ```
 
-The project does not use Network Extension to create a VPN tunnel — there is no VPN icon and no VPN slot occupied. **However, you still need to configure the current Wi‑Fi HTTP proxy and install & trust the locally generated CA.** Re‑check proxy settings after switching Wi‑Fi networks; remove the manual proxy when you stop using the app.
+App Mode does not use Network Extension, so it does not occupy the VPN slot. **App Mode still requires the current Wi-Fi HTTP proxy and the locally generated CA.** Third-party Proxy Mode delegates proxy/VPN and MITM handling to the selected proxy client and may cover cellular networks. Do not enable both interception paths at once.
 
 ## Compatibility
 
@@ -121,7 +134,7 @@ The project does not use Network Extension to create a VPN tunnel — there is n
 | Build | macOS, Xcode, XcodeGen |
 | Swift | 5.9 |
 | Go | 1.23+ |
-| Network | Wi‑Fi with manual HTTP proxy support |
+| Network | Local mode: Wi-Fi with manual HTTP proxy support; third-party test mode: client-dependent Wi-Fi/4G/5G |
 | Installation | Self-sign or use release builds |
 
 Actual behavior may vary with iOS version, network conditions, system location cache, device model, and the target app's own location strategy. Compatibility with every iOS version or third-party app is not guaranteed.
@@ -151,7 +164,6 @@ docs/       Build, self-signing, and changelog documentation
 ## Documentation & Feedback
 
 - [Build guide](docs/BUILD.md)
-- [Self-signing guide](docs/SELF-SIGNING.md)
 - [Changelog](docs/CHANGELOG.md)
 - [中文文档](README.md)
 - [GitHub Issues](https://github.com/xweiba/location-spoofer/issues)

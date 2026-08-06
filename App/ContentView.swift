@@ -2,10 +2,12 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var setup = SetupCoordinator()
+    @ObservedObject private var runtimeMode = ProxyRuntimeModeStore.shared
     @State private var phase: AppPhase = .splash
+    @State private var verifiedDuringInitialSetup = false
     @AppStorage("setupCompleted") private var setupCompleted = false
 
-    enum AppPhase { case splash, map }
+    enum AppPhase { case splash, setup, map }
 
     var body: some View {
         Group {
@@ -15,8 +17,13 @@ struct ContentView: View {
                     Image(systemName: "location.fill")
                         .font(.system(size: 48)).foregroundStyle(.blue)
                     ProgressView()
-                    Text("正在初始化地图与本地代理…").font(.subheadline).foregroundStyle(.secondary)
+                    Text(runtimeMode.hasSelectedMode && runtimeMode.mode == .localWiFi
+                         ? "正在初始化地图与本地代理…"
+                         : "正在初始化地图…")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
+            case .setup:
+                FirstSetupView(setup: setup, onComplete: finishInitialSetup)
             case .map:
                 NavigationView {
                     MapHomeView(setup: setup)
@@ -34,7 +41,35 @@ struct ContentView: View {
 
     @MainActor
     private func bootstrap() async {
-        await setup.prepareLocalServices()
+        guard runtimeMode.hasSelectedMode else {
+            ProxyManager.shared.stop()
+            RuntimeLogger.info("APP", "Startup", "尚未选择运行模式，跳过本地 CA 和代理初始化")
+            setup.requestModeSelection()
+            phase = .setup
+            return
+        }
+
+        let launchMode = runtimeMode.mode
+        guard setupCompleted else {
+            if launchMode == .localWiFi {
+                await setup.prepareLocalServices()
+                setup.requestSetup()
+            } else {
+                ProxyManager.shared.stop()
+                BackgroundKeepAlive.shared.stop()
+                setup.requestThirdPartySetup()
+            }
+            phase = .setup
+            return
+        }
+
+        if launchMode == .localWiFi {
+            await setup.prepareLocalServices()
+        } else {
+            ProxyManager.shared.stop()
+            setup.completeSetup()
+            RuntimeLogger.info("APP", "Startup", "第三方代理测试模式：跳过本地 CA、代理和环境检测")
+        }
         do {
             try CoordinateStorageMigration.migrateIfNeeded(favorites: FavoriteLocationStore())
         } catch {
@@ -83,7 +118,12 @@ struct ContentView: View {
         }
         guard !Task.isCancelled else { return }
 
-        if setupCompleted {
+        if launchMode == .thirdParty {
+            setup.completeSetup()
+        } else if verifiedDuringInitialSetup {
+            verifiedDuringInitialSetup = false
+            setup.completeSetup()
+        } else if setupCompleted {
             let result = await setup.runVerificationTest()
             setup.applyVerificationResult(result)
         } else {
@@ -91,5 +131,13 @@ struct ContentView: View {
         }
         RuntimeLogger.info("APP", "Startup", "启动门禁全部完成，现在创建 MapHomeView")
         phase = .map
+    }
+
+    private func finishInitialSetup() {
+        verifiedDuringInitialSetup = runtimeMode.mode == .localWiFi
+        setupCompleted = true
+        setup.completeSetup()
+        phase = .splash
+        Task { await bootstrap() }
     }
 }

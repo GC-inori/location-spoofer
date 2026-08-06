@@ -59,6 +59,14 @@ final class SetupCoordinator: ObservableObject {
     func sceneDidBecomeActive() {}
     func browseMapWithoutSetup() { isBrowsingWithoutTrust = true; needsSetup = false }
     func completeSetup() { needsSetup = false }
+    func requestModeSelection() {
+        setupStep = .mode
+        needsSetup = true
+    }
+    func requestThirdPartySetup() {
+        setupStep = .thirdPartyClient
+        needsSetup = true
+    }
     func requestSetup() {
         setupStep = .proxy
         needsSetup = true

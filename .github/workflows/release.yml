@@ -34,21 +34,19 @@ jobs:
       - name: Rename IPA for release
         run: mv dist/PaopaoLocationSpoofer-unsigned.ipa dist/Location-Spoofer-unsigned.ipa
 
-      - name: Read release notes
-        id: changelog
+      - name: Validate archived release notes
         run: |
           VERSION="${{ github.ref_name }}"
           NOTES_FILE="docs/releases/${VERSION}.md"
-          if [ -f "$NOTES_FILE" ]; then
-            cat "$NOTES_FILE" > /tmp/release_notes.md
-          else
-            echo "⚠️ $NOTES_FILE 未找到，请创建该文件。" > /tmp/release_notes.md
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "::error::缺少版本归档 $NOTES_FILE。请在打 tag 前运行 ./Scripts/generate-release-notes.sh $VERSION 并提交。"
+            exit 1
           fi
-          {
-            echo "notes<<EOF"
-            cat /tmp/release_notes.md
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          if ! grep -Fq "# ${VERSION}" "$NOTES_FILE"; then
+            echo "::error::$NOTES_FILE 的标题必须包含 # ${VERSION}"
+            exit 1
+          fi
+          cp "$NOTES_FILE" /tmp/release_notes.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

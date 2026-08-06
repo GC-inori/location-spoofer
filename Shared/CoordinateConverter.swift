@@ -59,6 +59,23 @@ enum CoordinateConverter {
     enum MapCoordinateSystem: String {
         case gcj02 = "GCJ-02"
         case wgs84 = "WGS-84"
+
+        var diagnosticName: String {
+            switch self {
+            case .gcj02: return "国内标准(GCJ-02)"
+            case .wgs84: return "国际标准(WGS-84)"
+            }
+        }
+    }
+
+    struct CoordinateRepresentationDiagnosis: Equatable {
+        let inferredSystem: MapCoordinateSystem?
+        let distanceToWGS84: CLLocationDistance
+        let distanceToGCJ02: CLLocationDistance
+
+        var inferredName: String {
+            inferredSystem?.diagnosticName ?? "无法判定"
+        }
     }
 
     // MARK: - 地图坐标标准
@@ -241,6 +258,41 @@ enum CoordinateConverter {
               + cos(lat1 * .pi / 180.0) * cos(lat2 * .pi / 180.0)
               * sin(dLon / 2) * sin(dLon / 2)
         return r * 2 * atan2(sqrt(a), sqrt(1 - a))
+    }
+
+    /// Identifies which stored representation a runtime sample most closely
+    /// resembles. Overseas identity pairs and unrelated samples stay ambiguous.
+    static func diagnoseRepresentation(
+        sample: CLLocationCoordinate2D,
+        pair: CoordinatePair,
+        maximumDistance: CLLocationDistance = 1_000,
+        minimumSeparation: CLLocationDistance = 30
+    ) -> CoordinateRepresentationDiagnosis {
+        let distanceToWGS84 = distance(
+            lat1: sample.latitude,
+            lon1: sample.longitude,
+            lat2: pair.wgs84.latitude,
+            lon2: pair.wgs84.longitude
+        )
+        let distanceToGCJ02 = distance(
+            lat1: sample.latitude,
+            lon1: sample.longitude,
+            lat2: pair.gcj02.latitude,
+            lon2: pair.gcj02.longitude
+        )
+        let nearestDistance = min(distanceToWGS84, distanceToGCJ02)
+        let separation = abs(distanceToWGS84 - distanceToGCJ02)
+        let inferredSystem: MapCoordinateSystem?
+        if nearestDistance > maximumDistance || separation < minimumSeparation {
+            inferredSystem = nil
+        } else {
+            inferredSystem = distanceToWGS84 < distanceToGCJ02 ? .wgs84 : .gcj02
+        }
+        return CoordinateRepresentationDiagnosis(
+            inferredSystem: inferredSystem,
+            distanceToWGS84: distanceToWGS84,
+            distanceToGCJ02: distanceToGCJ02
+        )
     }
 
     // MARK: - 核心转换
