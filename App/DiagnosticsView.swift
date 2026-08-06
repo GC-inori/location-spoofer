@@ -51,6 +51,12 @@ struct RuntimeLogsView: View {
             }
         }
         .navigationTitle("运行日志").navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            Text("日志自动清理，仅保留近 3 天")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 6)
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) { Button("关闭") { dismiss() } }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -91,7 +97,7 @@ struct RuntimeLogsView: View {
             Button {
                 isTesting = true; testResult = ""; testLogCopied = false
                 Task {
-                    let result = await setup.runVerificationTest(testLat: testFavorite.latitude, testLon: testFavorite.longitude)
+                    let result = await setup.runVerificationTest()
                     testResult = result.isSuccess ? "环境检测通过" : "环境检测失败: \(result.id)"
                     if !result.isSuccess { testResult += "，查看下方日志" }
                     testMessage = setup.testLog

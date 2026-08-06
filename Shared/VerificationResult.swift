@@ -31,9 +31,22 @@ enum VerificationResult: Equatable, Identifiable {
         switch self {
         case .success: return nil
         case .proxyNotRunning, .verificationInProgress, .verificationSuperseded: return nil
-        case .certNotTrusted: return .certificate
+        case .certNotTrusted: return nil
         case .wifiProxyNotConfigured: return .proxySetup
         case .coordinateWriteFailed, .patchFailed: return .rewriteFailed
+        }
+    }
+
+    /// Wi-Fi 变化后仍留在地图页显示的提醒。
+    /// 证书失败必须进入完整证书安装引导，因此不在这里返回通用提示页。
+    var wifiChangeReminderTipKind: TipKind? {
+        switch self {
+        case .proxyNotRunning:
+            return .proxySetup
+        case .certNotTrusted, .verificationInProgress, .verificationSuperseded:
+            return nil
+        default:
+            return tipKind
         }
     }
 }

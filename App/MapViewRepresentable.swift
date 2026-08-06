@@ -32,6 +32,7 @@ enum MapZoomMath {
 
 struct MapViewRepresentable: UIViewRepresentable {
     let selection: MapSelection
+    let initialViewportMeters: CLLocationDistance
     let cameraCommand: MapCameraCommand?
     let onRealtimeLocationChanged: (CLLocation) -> Void
     let onUserCenterChanged: (CLLocationCoordinate2D, CLLocationDistance) -> Void
@@ -47,9 +48,11 @@ struct MapViewRepresentable: UIViewRepresentable {
         let map = MKMapView()
         map.delegate = context.coordinator
         map.showsUserLocation = true
-        let initialDistance = ViewportStore.loadOrDefault()
+        let initialDistance = max(50, initialViewportMeters)
         RuntimeLogger.info("APP", "地图", "makeUIView", details: [
-            "zoom": String(initialDistance)
+            "zoom": String(initialDistance),
+            "初始坐标来源": String(describing: selection.source),
+            "地图标准": CoordinateConverter.currentMapCoordinateSystem.rawValue
         ])
         map.setRegion(
             MKCoordinateRegion(
@@ -102,7 +105,7 @@ struct MapViewRepresentable: UIViewRepresentable {
         zoomLabel.textAlignment = .center
         zoomLabel.adjustsFontSizeToFitWidth = true
         zoomLabel.minimumScaleFactor = 0.7
-        zoomLabel.text = MapZoomMath.viewportScaleLabel(distanceMeters: ViewportStore.loadOrDefault())
+        zoomLabel.text = MapZoomMath.viewportScaleLabel(distanceMeters: initialDistance)
         zoomLabel.heightAnchor.constraint(equalToConstant: 28).isActive = true
         context.coordinator.zoomLabel = zoomLabel
 
@@ -160,6 +163,7 @@ struct MapViewRepresentable: UIViewRepresentable {
         // 蓝点实际大小从 MKUserLocationView 取，默认 20pt
         private var userDotDiameter: CGFloat = 20
         private var keyboardObserverTokens: [NSObjectProtocol] = []
+        private var lastForwardedRealtimeTimestamp: Date?
 
         deinit {
             keyboardObserverTokens.forEach(NotificationCenter.default.removeObserver)
@@ -235,10 +239,28 @@ struct MapViewRepresentable: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
-            guard let location = userLocation.location,
-                  CLLocationCoordinate2DIsValid(location.coordinate),
-                  location.horizontalAccuracy >= 0 else { return }
-            parent.onRealtimeLocationChanged(location)
+            guard let location = userLocation.location else {
+                RuntimeLogger.warning("APP", "实时定位", "MapKit 蓝点更新但 location 为空", details: [
+                    "来源": "MKMapView.didUpdate"
+                ])
+                return
+            }
+            guard CLLocationCoordinate2DIsValid(location.coordinate) else {
+                RealtimeLocationTrace.log("拒绝 MapKit 蓝点样本：坐标无效", location: location, details: [
+                    "来源": "MKMapView.didUpdate"
+                ], level: .warning)
+                return
+            }
+            guard location.horizontalAccuracy >= 0 else {
+                RealtimeLocationTrace.log("拒绝 MapKit 蓝点样本：水平精度无效", location: location, details: [
+                    "来源": "MKMapView.didUpdate"
+                ], level: .warning)
+                return
+            }
+            RealtimeLocationTrace.log("收到 MapKit 可见蓝点样本", location: location, details: [
+                "来源": "MKMapView.didUpdate"
+            ])
+            forwardRealtimeLocation(location)
         }
 
         func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
@@ -271,7 +293,12 @@ struct MapViewRepresentable: UIViewRepresentable {
             // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
             if let ul = mapView.userLocation.location,
                CLLocationCoordinate2DIsValid(ul.coordinate), ul.horizontalAccuracy >= 0 {
-                parent.onRealtimeLocationChanged(ul)
+                if lastForwardedRealtimeTimestamp.map({ ul.timestamp > $0 }) ?? true {
+                    RealtimeLocationTrace.log("区域变化后同步到较新的 MapKit 蓝点样本", location: ul, details: [
+                        "来源": "MKMapView.regionDidChange"
+                    ])
+                    forwardRealtimeLocation(ul)
+                }
             }
 
             let userZoomed: Bool
@@ -293,6 +320,11 @@ struct MapViewRepresentable: UIViewRepresentable {
             }
 
             regionChangeWasUserDriven = false
+        }
+
+        private func forwardRealtimeLocation(_ location: CLLocation) {
+            lastForwardedRealtimeTimestamp = location.timestamp
+            parent.onRealtimeLocationChanged(location)
         }
 
         private func visibleVerticalDistance(in map: MKMapView) -> CLLocationDistance {

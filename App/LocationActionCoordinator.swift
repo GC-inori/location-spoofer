@@ -1,15 +1,47 @@
 import Foundation
 
 @MainActor
+protocol LocationActionProxying: AnyObject {
+    var isRunning: Bool { get }
+    func start() async throws
+    func setCoords(lat: Double, lon: Double, enabled: Bool, accuracy: Int) -> UInt64
+}
+
+extension ProxyManager: LocationActionProxying {}
+
+@MainActor
+protocol LocationActionSettingsStoring: AnyObject {
+    func load() -> WlocSettings?
+    func save(_ settings: WlocSettings)
+    func clear()
+}
+
+@MainActor
+final class DeviceWlocSettingsStorage: LocationActionSettingsStoring {
+    func load() -> WlocSettings? { WlocSettingsStore.load() }
+    func save(_ settings: WlocSettings) { WlocSettingsStore.save(settings) }
+    func clear() { WlocSettingsStore.clear() }
+}
+
+@MainActor
 final class LocationActionCoordinator: ObservableObject {
     @Published private(set) var state: LocationActionState = .idle
     @Published private(set) var virtualLocationEnabled = false
     @Published private(set) var message = ""
 
-    private let proxy = ProxyManager.shared
+    private let proxy: any LocationActionProxying
+    private let settings: any LocationActionSettingsStoring
 
     init() {
-        self.virtualLocationEnabled = WlocSettingsStore.load()?.enabled == true
+        self.proxy = ProxyManager.shared
+        self.settings = DeviceWlocSettingsStorage()
+        self.virtualLocationEnabled = settings.load()?.enabled == true
+    }
+
+    init(proxy: any LocationActionProxying, settings: any LocationActionSettingsStoring) {
+        self.proxy = proxy
+        self.settings = settings
+        self.virtualLocationEnabled = settings.load()?.enabled == true
     }
 
     func apply(_ favorite: FavoriteLocation) async -> Bool {
@@ -41,8 +73,8 @@ final class LocationActionCoordinator: ObservableObject {
 
     func clear() {
         guard !state.isBusy else { return }
-        proxy.setCoords(lat: 0, lon: 0, enabled: false)
-        WlocSettingsStore.clear()
+        _ = proxy.setCoords(lat: 0, lon: 0, enabled: false, accuracy: 25)
+        settings.clear()
         state = .idle
         virtualLocationEnabled = false
         message = "已恢复真实定位"
@@ -56,17 +88,18 @@ final class LocationActionCoordinator: ObservableObject {
     }
 
     private func commit(_ favorite: FavoriteLocation) -> Bool {
-        // 统一转为 WGS-84 存储（地图取点可能为当前瓦片坐标系）
-        let wgs = CoordinateConverter.toStored(lat: favorite.latitude, lon: favorite.longitude)
-        WlocSettingsStore.save(WlocSettings(
-            longitude: wgs.lon,
-            latitude: wgs.lat,
+        // WLOC 合约固定使用持久化的 WGS-84 值，不依赖当前地图地图坐标标准。
+        let wgs = favorite.coordinatePair.wgs84
+        let value = WlocSettings(
+            longitude: wgs.longitude,
+            latitude: wgs.latitude,
             accuracy: favorite.accuracy,
             enabled: true
-        ))
-        proxy.setCoords(
-            lat: wgs.lat,
-            lon: wgs.lon,
+        )
+        settings.save(value)
+        _ = proxy.setCoords(
+            lat: wgs.latitude,
+            lon: wgs.longitude,
             enabled: true,
             accuracy: favorite.accuracy
         )

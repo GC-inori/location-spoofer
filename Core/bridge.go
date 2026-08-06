@@ -41,6 +41,18 @@ func wloccore_generateca() (r0, r1 *C.char) {
 	return C.CString(string(cert)), C.CString(string(key))
 }
 
+//export wloccore_validateca
+func wloccore_validateca(certData, keyData *C.char) C.int {
+	if certData == nil || keyData == nil {
+		return 0
+	}
+	if _, err := parseCA([]byte(C.GoString(certData)), []byte(C.GoString(keyData))); err != nil {
+		logEvent("validateca failed: " + err.Error())
+		return 0
+	}
+	return 1
+}
+
 //export wloccore_startproxy
 func wloccore_startproxy(certData, keyData *C.char, lat, lon C.double, enabled C.int, accuracy C.int) C.uintptr_t {
 	if certData == nil || keyData == nil {

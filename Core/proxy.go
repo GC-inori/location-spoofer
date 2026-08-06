@@ -145,7 +145,9 @@ func newProxy(cert *tls.Certificate) *goproxy.ProxyHttpServer {
 				logEvent("CONNECT " + host + " -> MITM (verify)")
 				return mitmAction, host
 			}
-			logEvent("CONNECT " + host + " -> passthrough")
+			// Global Wi-Fi proxy mode sends all HTTPS CONNECT traffic here. Logging
+			// unrelated passthrough hosts creates high-volume noise and can disclose
+			// browsing destinations; diagnostics only retain WLOC and verify traffic.
 			return goproxy.OkConnect, host
 		})
 	}

@@ -131,12 +131,17 @@ final class MapLocationState: ObservableObject {
     private var nextRealtimeIntentID: UInt64 = 0
     private var latestRealtimeIntentID: UInt64 = 0
 
-    init(initialCoordinate: CLLocationCoordinate2D, initialViewportMeters: CLLocationDistance = 1_000) {
+    init(
+        initialCoordinate: CLLocationCoordinate2D,
+        initialViewportMeters: CLLocationDistance = 1_000,
+        initialSource: MapSelectionSource = .initial,
+        initialName: String? = nil
+    ) {
         viewportMeters = initialViewportMeters
         selection = MapSelection(
             coordinate: initialCoordinate,
-            source: .initial,
-            explicitName: nil,
+            source: initialSource,
+            explicitName: initialName?.nonEmpty,
             revision: nextSelectionRevision
         )
     }
@@ -233,7 +238,7 @@ final class MapLocationState: ObservableObject {
 
     /// Updates only the map representation of the current physical selection.
     /// This preserves revision/source so an in-flight user action is not invalidated.
-    func reprojectSelectionForTileChange(_ coordinate: CLLocationCoordinate2D) {
+    func reprojectSelectionForMapCoordinateSystemChange(_ coordinate: CLLocationCoordinate2D) {
         guard CLLocationCoordinate2DIsValid(coordinate),
               !selection.coordinate.isApproximatelyEqual(to: coordinate) else { return }
         selection = MapSelection(
@@ -302,49 +307,132 @@ extension CLLocationCoordinate2D {
 
 // MARK: - 持久化存储
 
+struct LastCoordinate: Codable, Equatable {
+    let coordinatePair: CoordinatePair
+    let zoomMeters: CLLocationDistance
+
+    func coordinate(for mapCoordinateSystem: CoordinateConverter.MapCoordinateSystem) -> CLLocationCoordinate2D {
+        coordinatePair.coordinate(for: mapCoordinateSystem)
+    }
+}
+
+enum LastCoordinateStore {
+    private struct StoredPosition: Codable {
+        let coordinatePair: CoordinatePair
+        let zoomMeters: CLLocationDistance
+    }
+
+    private static let positionKey = "lastMapPositionV1"
+    private static let legacyLatKey = "lastMapLat"
+    private static let legacyLonKey = "lastMapLon"
+
+    static func save(
+        mapCoordinate: CLLocationCoordinate2D,
+        mapCoordinateSystem: CoordinateConverter.MapCoordinateSystem,
+        zoomMeters: CLLocationDistance,
+        defaults: UserDefaults = AppGroup.defaults
+    ) {
+        save(
+            coordinatePair: .init(mapCoordinate: mapCoordinate, mapCoordinateSystem: mapCoordinateSystem),
+            zoomMeters: zoomMeters,
+            defaults: defaults
+        )
+    }
+
+    static func save(
+        coordinatePair: CoordinatePair,
+        zoomMeters: CLLocationDistance,
+        defaults: UserDefaults = AppGroup.defaults
+    ) {
+        do {
+            let value = StoredPosition(coordinatePair: coordinatePair, zoomMeters: max(50, zoomMeters))
+            defaults.set(try JSONEncoder().encode(value), forKey: positionKey)
+            ViewportStore.save(value.zoomMeters, defaults: defaults)
+        } catch {
+            RuntimeLogger.error("APP", "地图", "保存当前图钉失败", error: error)
+        }
+    }
+
+    static func load(defaults: UserDefaults = AppGroup.defaults) -> LastCoordinate? {
+        if let data = defaults.data(forKey: positionKey),
+           let value = try? JSONDecoder().decode(StoredPosition.self, from: data) {
+            return LastCoordinate(coordinatePair: value.coordinatePair, zoomMeters: value.zoomMeters)
+        }
+
+        let legacyLatitude = defaults.double(forKey: legacyLatKey)
+        let legacyLongitude = defaults.double(forKey: legacyLonKey)
+        let legacy = CLLocationCoordinate2D(latitude: legacyLatitude, longitude: legacyLongitude)
+        guard CLLocationCoordinate2DIsValid(legacy), legacyLatitude != 0 || legacyLongitude != 0 else {
+            return nil
+        }
+        return LastCoordinate(
+            coordinatePair: CoordinateConverter.legacyCoordinatePair(lat: legacyLatitude, lon: legacyLongitude),
+            zoomMeters: ViewportStore.load(defaults: defaults) ?? 1_000
+        )
+    }
+
+    static func updateZoom(_ meters: CLLocationDistance, defaults: UserDefaults = AppGroup.defaults) {
+        guard let current = load(defaults: defaults) else { return }
+        save(coordinatePair: current.coordinatePair, zoomMeters: meters, defaults: defaults)
+    }
+
+    static func migrateLegacyCoordinate(
+        defaults: UserDefaults = AppGroup.defaults,
+        legacyDefaults: UserDefaults = .standard
+    ) throws {
+        guard defaults.data(forKey: positionKey) == nil else { return }
+        let legacyLatitude = legacyDefaults.double(forKey: legacyLatKey)
+        let legacyLongitude = legacyDefaults.double(forKey: legacyLonKey)
+        let legacy = CLLocationCoordinate2D(latitude: legacyLatitude, longitude: legacyLongitude)
+        guard CLLocationCoordinate2DIsValid(legacy), legacyLatitude != 0 || legacyLongitude != 0 else { return }
+        let value = StoredPosition(
+            coordinatePair: CoordinateConverter.legacyCoordinatePair(lat: legacyLatitude, lon: legacyLongitude),
+            zoomMeters: ViewportStore.load(defaults: legacyDefaults) ?? 1_000
+        )
+        defaults.set(try JSONEncoder().encode(value), forKey: positionKey)
+    }
+}
+
 enum ViewportStore {
     private static let key = "mapViewportMeters"
-    static func save(_ meters: CLLocationDistance) {
-        UserDefaults.standard.set(meters, forKey: key)
-        RuntimeLogger.info("APP", "缩放", "存储缩放", details: ["zoom": String(meters)])
+
+    static func save(_ meters: CLLocationDistance, defaults: UserDefaults = AppGroup.defaults) {
+        let value = max(50, meters)
+        defaults.set(value, forKey: key)
+        RuntimeLogger.info("APP", "缩放", "存储缩放", details: ["zoom": String(value)])
     }
-    /// 取持久化缩放值；未存过返回 nil
-    static func load() -> CLLocationDistance? {
-        let v = UserDefaults.standard.double(forKey: key)
-        let result = v > 0 ? v : nil
-        RuntimeLogger.info("APP", "缩放", "读取缩放", details: ["zoom": result.map { String($0) } ?? "nil"])
-        return result
+
+    static func load(defaults: UserDefaults = AppGroup.defaults) -> CLLocationDistance? {
+        let value = defaults.double(forKey: key)
+        return value > 0 ? value : nil
     }
-    /// 取持久化缩放值，取不到返回默认 1km 并立即存储
-    static func loadOrDefault() -> CLLocationDistance {
-        if let v = load() { return v }
+
+    static func loadOrDefault(defaults: UserDefaults = AppGroup.defaults) -> CLLocationDistance {
+        if let value = load(defaults: defaults) { return value }
         let fallback: CLLocationDistance = 1_000
-        save(fallback)
-        RuntimeLogger.info("APP", "缩放", "使用默认缩放 1km")
+        save(fallback, defaults: defaults)
         return fallback
     }
 }
 
-struct LastCoordinate {
-    let latitude: Double
-    let longitude: Double
-    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
-    var isValid: Bool { CLLocationCoordinate2DIsValid(coordinate) && (latitude != 0 || longitude != 0) }
-}
+enum CoordinateStorageMigration {
+    private static let versionKey = "coordinateStorageMigrationVersion"
+    static let currentVersion = 1
 
-enum LastCoordinateStore {
-    private static let latKey = "lastMapLat"
-    private static let lonKey = "lastMapLon"
-    static func save(lat: Double, lon: Double) {
-        UserDefaults.standard.set(lat, forKey: latKey)
-        UserDefaults.standard.set(lon, forKey: lonKey)
-    }
-    /// 取持久化坐标，未存过或无效返回 nil
-    static func load() -> LastCoordinate? {
-        let c = LastCoordinate(
-            latitude: UserDefaults.standard.double(forKey: latKey),
-            longitude: UserDefaults.standard.double(forKey: lonKey)
+    static func migrateIfNeeded(
+        favorites: FavoriteLocationStore,
+        defaults: UserDefaults = AppGroup.defaults,
+        legacyDefaults: UserDefaults = .standard
+    ) throws {
+        guard defaults.integer(forKey: versionKey) < currentVersion else { return }
+        // Pre-migration map pin and viewport values lived in UserDefaults.standard;
+        // favorites already lived in App Group defaults.
+        try LastCoordinateStore.migrateLegacyCoordinate(
+            defaults: defaults,
+            legacyDefaults: legacyDefaults
         )
-        return c.isValid ? c : nil
+        try favorites.migrateLegacyCoordinates()
+        defaults.set(currentVersion, forKey: versionKey)
+        RuntimeLogger.info("APP", "坐标转换", "旧坐标数据迁移完成")
     }
 }

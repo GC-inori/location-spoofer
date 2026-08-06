@@ -185,20 +185,20 @@ final class MapLocationStateTests: XCTestCase {
         XCTAssertNil(state.cameraCommand, "realtime updates preserve the current camera unless the caller explicitly focuses it")
     }
 
-    func testTileReprojectionPreservesSelectionIdentityAndIssuesFocus() {
+    func testMapCoordinateSystemReprojectionPreservesSelectionIdentityAndIssuesFocus() {
         let state = MapLocationState(initialCoordinate: initial)
         let favoriteID = UUID()
         state.selectFavorite(.init(latitude: 22.55, longitude: 113.95), id: favoriteID, name: "测试收藏")
         let revision = state.selection.revision
 
-        state.reprojectSelectionForTileChange(.init(latitude: 22.54, longitude: 113.94))
+        state.reprojectSelectionForMapCoordinateSystemChange(.init(latitude: 22.54, longitude: 113.94))
 
         XCTAssertEqual(state.selection.source, .favorite(favoriteID))
         XCTAssertEqual(state.selection.explicitName, "测试收藏")
         XCTAssertEqual(state.selection.revision, revision)
         XCTAssertEqual(state.selection.coordinate.latitude, 22.54, accuracy: 0.000001)
         guard case let .focus(coordinate, distanceMeters) = state.cameraCommand?.kind else {
-            return XCTFail("Expected a focus command after tile reprojection")
+            return XCTFail("Expected a focus command after map coordinate-system reprojection")
         }
         XCTAssertEqual(coordinate.latitude, 22.54, accuracy: 0.000001)
         XCTAssertEqual(distanceMeters, state.viewportMeters)
@@ -221,4 +221,71 @@ final class MapLocationStateTests: XCTestCase {
         XCTAssertEqual(MapZoomMath.viewportScaleLabel(distanceMeters: 2_500), "2.5 km")
         XCTAssertEqual(MapZoomMath.viewportScaleLabel(distanceMeters: 126_000), "126 km")
     }
+
+    func testLastCoordinateStoreKeepsBothFormsAndZoom() {
+        let suite = "MapLocationStateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let gcj = CLLocationCoordinate2D(latitude: 22.544_577, longitude: 113.941_14)
+
+        LastCoordinateStore.save(mapCoordinate: gcj, mapCoordinateSystem: .gcj02, zoomMeters: 1_250, defaults: defaults)
+
+        guard let restored = LastCoordinateStore.load(defaults: defaults) else {
+            return XCTFail("Expected a persisted current map pin")
+        }
+        XCTAssertEqual(restored.coordinate(for: .gcj02).latitude, gcj.latitude, accuracy: 0.000_000_1)
+        XCTAssertEqual(restored.coordinate(for: .gcj02).longitude, gcj.longitude, accuracy: 0.000_000_1)
+        XCTAssertNotEqual(restored.coordinate(for: .wgs84).longitude, gcj.longitude)
+        XCTAssertEqual(restored.zoomMeters, 1_250)
+    }
+
+    func testCoordinateMigrationUpgradesLegacyCurrentPinAndFavoritesBeforeSettingVersion() throws {
+        let suite = "MapLocationStateTests.\(UUID().uuidString)"
+        let legacySuite = "MapLocationStateTests.Legacy.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let legacyDefaults = UserDefaults(suiteName: legacySuite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defer { legacyDefaults.removePersistentDomain(forName: legacySuite) }
+        let firstID = UUID()
+        let secondID = UUID()
+        let records = [
+            CoordinateMigrationLegacyFavorite(id: firstID, name: "第一个", latitude: 22.544_577, longitude: 113.941_14, accuracy: 15, createdAt: .distantPast),
+            CoordinateMigrationLegacyFavorite(id: secondID, name: "海外", latitude: 48.858_37, longitude: 2.294_481, accuracy: 30, createdAt: .distantFuture),
+        ]
+        legacyDefaults.set(22.544_577, forKey: "lastMapLat")
+        legacyDefaults.set(113.941_14, forKey: "lastMapLon")
+        legacyDefaults.set(2_000.0, forKey: "mapViewportMeters")
+        defaults.set(try JSONEncoder().encode(records), forKey: "favorite_locations")
+        defaults.set(secondID.uuidString, forKey: "favorite_locations_selected_id")
+
+        let favorites = FavoriteLocationStore(defaults: defaults)
+        try CoordinateStorageMigration.migrateIfNeeded(
+            favorites: favorites,
+            defaults: defaults,
+            legacyDefaults: legacyDefaults
+        )
+
+        XCTAssertEqual(defaults.integer(forKey: "coordinateStorageMigrationVersion"), CoordinateStorageMigration.currentVersion)
+        guard let current = LastCoordinateStore.load(defaults: defaults) else {
+            return XCTFail("Expected migrated current map pin")
+        }
+        XCTAssertEqual(current.coordinate(for: .gcj02).latitude, 22.544_577, accuracy: 0.000_000_1)
+        XCTAssertEqual(current.zoomMeters, 2_000)
+
+        let reloaded = FavoriteLocationStore(defaults: defaults)
+        XCTAssertEqual(reloaded.favorites.map(\.id), [firstID, secondID])
+        XCTAssertEqual(reloaded.favorites.map(\.name), ["第一个", "海外"])
+        XCTAssertEqual(reloaded.selectedFavoriteID, secondID)
+        XCTAssertFalse(reloaded.favorites.contains(where: \.isLegacyCoordinateRecord))
+        XCTAssertEqual(reloaded.favorites[1].coordinatePair.wgs84.latitude, reloaded.favorites[1].coordinatePair.gcj02.latitude, accuracy: 0.000_000_1)
+    }
+}
+
+private struct CoordinateMigrationLegacyFavorite: Encodable {
+    let id: UUID
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let accuracy: Int
+    let createdAt: Date
 }

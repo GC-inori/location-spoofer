@@ -4,7 +4,6 @@ enum TipKind: String, Identifiable {
     case activation = "生效说明"
     case deactivation = "失效说明"
     case removeProxy = "关闭 WiFi 代理"
-    case certificate = "证书问题"
     case proxySetup = "配置代理"
     case rewriteFailed = "改写失败"
     var id: String { rawValue }
@@ -22,7 +21,6 @@ struct TipSheetView: View {
                     case .activation: ActivationTipContent(dismiss: { dismiss() })
                     case .deactivation: DeactivationTipContent(dismiss: { dismiss() })
                     case .removeProxy: RemoveProxyTipContent(dismiss: { dismiss() })
-                    case .certificate: CertificateTipContent(dismiss: { dismiss() })
                     case .proxySetup: ProxySetupTipContent(dismiss: { dismiss() })
                     case .rewriteFailed: RewriteFailedTipContent(dismiss: { dismiss() })
                     }
@@ -178,24 +176,6 @@ struct RemoveProxyTipContent: View {
                 Text("停止虚拟定位后，需要手动移除 WiFi 代理配置，否则可能无法上网。\n\n1. 打开「设置 → 无线局域网」\n2. 点击当前 WiFi 右侧 (i) 图标\n3. 找到「HTTP 代理」\n4. 选择「关闭」\n5. 点右上角「存储」")
                     .font(.caption).foregroundStyle(.primary)
                 Button { openSettings(.wifi) } label: {
-                    Label("去设置", systemImage: "arrow.up.right.square").font(.caption)
-                }.buttonStyle(.bordered).tint(.blue)
-            }.padding(.vertical, 4)
-        }
-    }
-}
-
-// MARK: - 证书问题
-
-struct CertificateTipContent: View {
-    let dismiss: () -> Void
-
-    var body: some View {
-        GroupBox(label: Label("证书未安装或未信任", systemImage: "lock.shield")) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("代理的 HTTPS 请求被系统拦截了，原因是 CA 证书未完成安装或信任。\n\n请依次检查：\n1. 打开「设置 → 通用 → VPN与设备管理」，确认 WLOC CA 证书已安装。如果没有，请删除旧证书后回到 App 重新下载安装\n2. 打开「设置 → 通用 → 关于本机 → 证书信任设置」，找到 WLOC CA 开启开关\n\n⚠️ 每次重装 App 都需要重新下载安装证书。如报 TLS 错误，请删除旧证书后重装。")
-                    .font(.caption).foregroundStyle(.primary)
-                Button { openSettings(.general) } label: {
                     Label("去设置", systemImage: "arrow.up.right.square").font(.caption)
                 }.buttonStyle(.bordered).tint(.blue)
             }.padding(.vertical, 4)

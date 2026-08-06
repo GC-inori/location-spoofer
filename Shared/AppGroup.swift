@@ -43,3 +43,76 @@ enum WlocSettingsStore {
         save(WlocSettings(longitude: 0, latitude: 0, accuracy: 25, enabled: false))
     }
 }
+
+enum VirtualLocationTipKind: Equatable {
+    case activation
+    case deactivation
+}
+
+/// Owns the persistent counters and suppression flags for automatic operation tips.
+/// Manual help sheets do not consult or mutate this store.
+struct VirtualLocationTipPreferences {
+    static let minimumCountForSuppression = 3
+
+    private enum Key {
+        static let activationCount = "virtualLocationTip.activationCount"
+        static let deactivationCount = "virtualLocationTip.deactivationCount"
+        static let activationSuppressed = "virtualLocationTip.activationSuppressed"
+        static let deactivationSuppressed = "virtualLocationTip.deactivationSuppressed"
+        static let legacyActivationSuppressed = "activationTipDisabled"
+    }
+
+    private let defaults: UserDefaults
+    private let legacyDefaults: UserDefaults
+
+    init(
+        defaults: UserDefaults = AppGroup.defaults,
+        legacyDefaults: UserDefaults = .standard
+    ) {
+        self.defaults = defaults
+        self.legacyDefaults = legacyDefaults
+    }
+
+    @discardableResult
+    func recordSuccessfulOperation(_ kind: VirtualLocationTipKind) -> Int {
+        let key = countKey(for: kind)
+        let next = defaults.integer(forKey: key) + 1
+        defaults.set(next, forKey: key)
+        return next
+    }
+
+    func shouldPresentAutomaticTip(_ kind: VirtualLocationTipKind) -> Bool {
+        !isSuppressed(kind)
+    }
+
+    func canSuppress(_ kind: VirtualLocationTipKind) -> Bool {
+        defaults.integer(forKey: countKey(for: kind)) >= Self.minimumCountForSuppression
+    }
+
+    func suppress(_ kind: VirtualLocationTipKind) {
+        guard canSuppress(kind) else { return }
+        defaults.set(true, forKey: suppressionKey(for: kind))
+    }
+
+    private func isSuppressed(_ kind: VirtualLocationTipKind) -> Bool {
+        if kind == .activation,
+           legacyDefaults.bool(forKey: Key.legacyActivationSuppressed) {
+            return true
+        }
+        return defaults.bool(forKey: suppressionKey(for: kind))
+    }
+
+    private func countKey(for kind: VirtualLocationTipKind) -> String {
+        switch kind {
+        case .activation: return Key.activationCount
+        case .deactivation: return Key.deactivationCount
+        }
+    }
+
+    private func suppressionKey(for kind: VirtualLocationTipKind) -> String {
+        switch kind {
+        case .activation: return Key.activationSuppressed
+        case .deactivation: return Key.deactivationSuppressed
+        }
+    }
+}

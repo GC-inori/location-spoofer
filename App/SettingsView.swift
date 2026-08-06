@@ -53,7 +53,7 @@ struct SettingsView: View {
 
             Section("应用") {
                 Button {
-                    setup.needsSetup = true
+                    setup.requestSetup()
                 } label: {
                     Label("进入引导页", systemImage: "arrow.clockwise.circle")
                 }

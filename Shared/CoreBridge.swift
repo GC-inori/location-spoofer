@@ -19,6 +19,14 @@ enum CoreBridgeError: LocalizedError {
 }
 
 enum CoreBridge {
+    static func isValidCertificateAuthority(_ authority: CertificateAuthority) -> Bool {
+        authority.certPEM.withCString { certificate in
+            authority.keyPEM.withCString { key in
+                wloccore_validateca(UnsafeMutablePointer(mutating: certificate), UnsafeMutablePointer(mutating: key)) != 0
+            }
+        }
+    }
+
     static func generateCertificateAuthority() throws -> CertificateAuthority {
         RuntimeLogger.info("APP", "Core.CA", "调用 Go Core 生成 CA")
         let result = wloccore_generateca()
@@ -39,21 +47,6 @@ enum CoreBridge {
         }
         defer { free(ptr) }
         return String(cString: ptr)
-    }
-
-    /// 构造接近真实设备格式的 wloc 请求体（多个 WiFi AP + 蜂窝基站）。
-    static func testWlocRequestData() -> Data {
-        guard let ptr = wloccore_testrequesthex() else { return Data([0x0a, 0x02, 0x08, 0x01]) }
-        defer { free(ptr) }
-        let hex = String(cString: ptr)
-        var data = Data()
-        var idx = hex.startIndex
-        while idx < hex.endIndex {
-            let end = hex.index(idx, offsetBy: 2, limitedBy: hex.endIndex) ?? hex.endIndex
-            if let b = UInt8(hex[idx..<end], radix: 16) { data.append(b) }
-            idx = end
-        }
-        return data
     }
 
     static func flushLogs(category: String) {

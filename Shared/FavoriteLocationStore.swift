@@ -1,20 +1,78 @@
+import CoreLocation
 import Foundation
 
 struct FavoriteLocation: Codable, Identifiable, Equatable {
     let id: UUID
     var name: String
-    var latitude: Double
-    var longitude: Double
+    var coordinatePair: CoordinatePair
     var accuracy: Int
     var createdAt: Date
+    private var wasDecodedFromLegacyCoordinates = false
 
-    init(id: UUID = UUID(), name: String, latitude: Double, longitude: Double, accuracy: Int, createdAt: Date = Date()) {
+    /// WGS-84 compatibility accessor. WLOC consumers must use this value.
+    var latitude: Double { coordinatePair.wgs84.latitude }
+    var longitude: Double { coordinatePair.wgs84.longitude }
+    var isLegacyCoordinateRecord: Bool { wasDecodedFromLegacyCoordinates }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        coordinatePair: CoordinatePair,
+        accuracy: Int,
+        createdAt: Date = Date()
+    ) {
         self.id = id
         self.name = name
-        self.latitude = latitude
-        self.longitude = longitude
+        self.coordinatePair = coordinatePair
         self.accuracy = accuracy
         self.createdAt = createdAt
+    }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        latitude: Double,
+        longitude: Double,
+        accuracy: Int,
+        createdAt: Date = Date(),
+        mapCoordinateSystem: CoordinateConverter.MapCoordinateSystem = .gcj02
+    ) {
+        self.init(
+            id: id,
+            name: name,
+            coordinatePair: CoordinateConverter.coordinatePair(lat: latitude, lon: longitude, mapCoordinateSystem: mapCoordinateSystem),
+            accuracy: accuracy,
+            createdAt: createdAt
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, coordinatePair, accuracy, createdAt, latitude, longitude
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        accuracy = try container.decode(Int.self, forKey: .accuracy)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        if let pair = try container.decodeIfPresent(CoordinatePair.self, forKey: .coordinatePair) {
+            coordinatePair = pair
+        } else {
+            let latitude = try container.decode(Double.self, forKey: .latitude)
+            let longitude = try container.decode(Double.self, forKey: .longitude)
+            coordinatePair = CoordinateConverter.legacyCoordinatePair(lat: latitude, lon: longitude)
+            wasDecodedFromLegacyCoordinates = true
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(coordinatePair, forKey: .coordinatePair)
+        try container.encode(accuracy, forKey: .accuracy)
+        try container.encode(createdAt, forKey: .createdAt)
     }
 }
 
@@ -52,16 +110,36 @@ final class FavoriteLocationStore: ObservableObject {
     }
 
     @discardableResult
-    func save(name: String, latitude: Double, longitude: Double, accuracy: Int) -> FavoriteLocation {
-        let favorite = FavoriteLocation(name: name, latitude: latitude, longitude: longitude, accuracy: accuracy)
-        // 去重：相同坐标删除旧数据，新数据插入顶部
+    func save(
+        name: String,
+        mapCoordinate: CLLocationCoordinate2D,
+        mapCoordinateSystem: CoordinateConverter.MapCoordinateSystem,
+        accuracy: Int
+    ) -> FavoriteLocation {
+        let favorite = FavoriteLocation(
+            name: name,
+            coordinatePair: .init(mapCoordinate: mapCoordinate, mapCoordinateSystem: mapCoordinateSystem),
+            accuracy: accuracy
+        )
         favorites.removeAll {
-            abs($0.latitude - favorite.latitude) < 0.000001 && abs($0.longitude - favorite.longitude) < 0.000001
+            abs($0.coordinatePair.wgs84.latitude - favorite.coordinatePair.wgs84.latitude) < 0.000001
+                && abs($0.coordinatePair.wgs84.longitude - favorite.coordinatePair.wgs84.longitude) < 0.000001
         }
         favorites.insert(favorite, at: 0)
         select(favorite.id)
-        persist()
+        persistIgnoringFailure()
         return favorite
+    }
+
+    /// Compatibility entry point for callers that already own raw map values.
+    @discardableResult
+    func save(name: String, latitude: Double, longitude: Double, accuracy: Int, mapCoordinateSystem: CoordinateConverter.MapCoordinateSystem = .gcj02) -> FavoriteLocation {
+        save(
+            name: name,
+            mapCoordinate: .init(latitude: latitude, longitude: longitude),
+            mapCoordinateSystem: mapCoordinateSystem,
+            accuracy: accuracy
+        )
     }
 
     func select(_ id: UUID?) {
@@ -72,7 +150,7 @@ final class FavoriteLocationStore: ObservableObject {
     func rename(_ id: UUID, to name: String) {
         guard let idx = favorites.firstIndex(where: { $0.id == id }) else { return }
         favorites[idx].name = name
-        persist()
+        persistIgnoringFailure()
     }
 
     func delete(_ favorite: FavoriteLocation) {
@@ -80,11 +158,23 @@ final class FavoriteLocationStore: ObservableObject {
         if selectedFavoriteID == favorite.id {
             select(favorites.first?.id)
         }
-        persist()
+        persistIgnoringFailure()
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(favorites) else { return }
-        defaults.set(data, forKey: Keys.favorites)
+    func migrateLegacyCoordinates() throws {
+        guard favorites.contains(where: \.isLegacyCoordinateRecord) else { return }
+        try persist()
+    }
+
+    private func persistIgnoringFailure() {
+        do {
+            try persist()
+        } catch {
+            RuntimeLogger.error("APP", "收藏", "保存收藏失败", error: error)
+        }
+    }
+
+    private func persist() throws {
+        defaults.set(try JSONEncoder().encode(favorites), forKey: Keys.favorites)
     }
 }

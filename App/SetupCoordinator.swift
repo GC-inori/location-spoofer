@@ -9,6 +9,7 @@ final class SetupCoordinator: ObservableObject {
     @Published var testLog = ""
     // 启动检测失败才弹引导页；检测通过则保持 false
     @Published var needsSetup = false
+    @Published private(set) var setupStep: SetupStep = .proxy
 
     let certificateStore = CertificateAuthorityStore()
     let proxy = ProxyManager.shared
@@ -24,68 +25,48 @@ final class SetupCoordinator: ObservableObject {
 
     var canModify: Bool { proxy.isRunning && trustState == .trusted }
 
-    func refreshTrust() async {
-        trustState = .checking
-        message = "正在检测…"
-        testLog = ""
-        defer { needsSetup = !canModify }
+    /// Local services are prepared before the setup UI so the environment test
+    /// can distinguish Wi-Fi proxy configuration from CA trust failures.
+    func prepareLocalServices() async {
         do {
             _ = try certificateStore.ensure()
             if !proxy.isRunning { try await proxy.start() }
-            // 强制走代理 POST 到 Apple 定位接口：TLS 成功 = CA 信任
-            let config = URLSessionConfiguration.ephemeral
-            config.timeoutIntervalForRequest = 5
-            config.timeoutIntervalForResource = 8
-            config.connectionProxyDictionary = [
-                kCFNetworkProxiesHTTPEnable as String: true,
-                kCFNetworkProxiesHTTPProxy as String: "127.0.0.1",
-                kCFNetworkProxiesHTTPPort as String: 8888,
-            ]
-            // This probe verifies proxy reachability and TLS trust only; it does not validate a selected coordinate.
-            let req = makeWlocRequest()
-            let (_, resp) = try await URLSession(configuration: config).data(for: req)
-            let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            // 400 = Apple 拒绝了测试请求体，但 TLS 握手成功 = 证书已信任
-            if status == 0 {
-                trustState = .unavailable
-                message = "代理链路异常，未收到响应"
-                return
-            }
-            trustState = .trusted
-            message = "✓ 定位环境正常（返回 \(status)）"
         } catch {
+            message = "本地代理初始化失败：\(error.localizedDescription)"
+            RuntimeLogger.error("APP", "Startup", "本地服务初始化失败", error: error)
+        }
+    }
+
+    func applyVerificationResult(_ result: VerificationResult) {
+        switch result {
+        case .success:
+            trustState = .trusted
+            needsSetup = false
+            message = "✓ 定位环境正常"
+        case .certNotTrusted:
             trustState = .unavailable
-            let ns = error as NSError
-            if ns.domain == NSURLErrorDomain && ns.code == -1202 {
-                message = "CA 证书未信任，请去「设置→通用→关于→证书信任设置」开启或重新安装"
-            } else if ns.domain == NSURLErrorDomain && ns.code == -1001 {
-                message = "检测超时，请检查代理是否正常"
-            } else if ns.domain == NSURLErrorDomain && ns.code == -1200 {
-                message = "代理未启动或无法连接"
-            } else {
-                message = "检测失败 [\(ns.domain) \(ns.code)]: \(ns.localizedDescription)"
-            }
+            setupStep = .cert
+            needsSetup = true
+            message = "CA 证书未安装或未信任"
+        default:
+            trustState = .unavailable
+            setupStep = .proxy
+            needsSetup = true
+            message = "Wi-Fi 代理未正确设置，请检查 127.0.0.1:8888"
         }
     }
 
     func sceneDidBecomeActive() {}
     func browseMapWithoutSetup() { isBrowsingWithoutTrust = true; needsSetup = false }
     func completeSetup() { needsSetup = false }
-    func requestSetup() { needsSetup = true }
+    func requestSetup() {
+        setupStep = .proxy
+        needsSetup = true
+    }
 
     // MARK: - Step-by-step verification test
 
-    private func makeWlocRequest() -> URLRequest {
-        var req = URLRequest(url: URL(string: "https://gs-loc.apple.com/clls/wloc")!)
-        req.httpMethod = "POST"
-        req.httpBody = CoreBridge.testWlocRequestData()
-        req.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
-        req.setValue("wloc/1.0", forHTTPHeaderField: "User-Agent")
-        req.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
-        return req
-    }
-
-    func runVerificationTest(testLat: Double = 22.543099, testLon: Double = 113.934576) async -> VerificationResult {
+    func runVerificationTest() async -> VerificationResult {
         guard !isVerificationRunning else { return .verificationInProgress }
         isVerificationRunning = true
         defer { isVerificationRunning = false }
@@ -137,20 +118,15 @@ final class SetupCoordinator: ObservableObject {
             if body == verifyToken {
                 log("  ✓ 证书已信任，WiFi 代理已配置")
             } else {
-                log("  ✗ 响应不匹配 (HTTP \(statusCode))，WiFi 代理未配置")
-                log("  收到: \(body.prefix(100))")
+                log("  ✗ 响应不匹配: HTTP \(statusCode), \(data.count) bytes，WiFi 代理未配置")
                 return .wifiProxyNotConfigured
             }
         } catch {
             let ns = error as NSError
             let msg = error.localizedDescription
             log("  ✗ 请求失败 [\(ns.domain) code=\(ns.code)]: \(msg)")
-            if ns.domain == NSURLErrorDomain && ns.code == -1202 {
-                log("  TLS 握手被拒，CA 证书未信任")
-                return .certNotTrusted
-            }
-            if msg.contains("TLS") {
-                log("  包含 TLS → 证书问题")
+            if isCertificateTrustError(nsError: ns, message: msg) {
+                log("  TLS/证书校验失败，CA 证书未信任")
                 return .certNotTrusted
             }
             return .wifiProxyNotConfigured
@@ -160,6 +136,28 @@ final class SetupCoordinator: ObservableObject {
         log("")
         log("======== 环境检测通过 ✓ ========")
         return .success
+    }
+
+    /// Classifies TLS trust failures without relying on localized error text alone.
+    private func isCertificateTrustError(nsError: NSError, message: String) -> Bool {
+        if nsError.domain == NSURLErrorDomain {
+            let trustErrorCodes: Set<Int> = [
+                -1200, // secure connection failed
+                -1201, // server certificate has bad date
+                -1202, // server certificate untrusted
+                -1203, // server certificate has unknown root
+                -1204, // server certificate not yet valid
+                -1205, // client certificate rejected
+                -1206, // client certificate required
+            ]
+            return trustErrorCodes.contains(nsError.code)
+        }
+
+        let normalized = message.lowercased()
+        return normalized.contains("tls")
+            || normalized.contains("ssl")
+            || normalized.contains("certificate")
+            || normalized.contains("证书")
     }
 
     /// 拉取 Go 代理的详细日志（CONNECT/请求/上游响应/改写结果）到 testLog

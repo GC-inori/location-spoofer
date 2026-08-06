@@ -86,7 +86,7 @@ struct BugReportView: View {
         isRunning = true
         Task {
             // 跑测试
-            _ = await setup.runVerificationTest(testLat: 22.543099, testLon: 113.934576)
+            _ = await setup.runVerificationTest()
             let testLog = setup.testLog
 
             // 获取版本信息

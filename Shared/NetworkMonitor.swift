@@ -2,6 +2,12 @@ import Network
 import Foundation
 import SystemConfiguration.CaptiveNetwork
 
+enum WiFiChangeReason: String {
+    case reconnected = "Wi-Fi 恢复连接"
+    case interfaceChanged = "网络接口切换到 Wi-Fi"
+    case ssidChanged = "SSID 发生变化"
+}
+
 @MainActor
 final class NetworkMonitor: ObservableObject {
     static let shared = NetworkMonitor()
@@ -10,26 +16,44 @@ final class NetworkMonitor: ObservableObject {
     @Published private(set) var isWiFiEnabled = true
     @Published private(set) var currentSSID: String?
 
-    /// WiFi 重连或 SSID 变化时触发的订阅。调用方必须在离开页面时移除订阅。
-    private var wifiChangeHandlers: [UUID: @MainActor () -> Void] = [:]
+    /// Wi-Fi 重连、接口切换或 SSID 变化时触发。调用方必须在离开页面时移除订阅。
+    private var wifiChangeHandlers: [UUID: @MainActor (WiFiChangeReason) -> Void] = [:]
 
     private let monitor = NWPathMonitor()
     private var ssidTimer: Timer?
     private var wasSatisfied = true
+    private var wasWiFiEnabled = true
+    private var hasReceivedInitialPath = false
+    private var lastKnownSSID: String?
 
     private init() {
+        let initialSSID = Self.fetchSSID()
+        currentSSID = initialSSID
+        lastKnownSSID = initialSSID
         monitor.pathUpdateHandler = { [weak self] path in
             let satisfied = path.status == .satisfied
             let wifi = path.usesInterfaceType(.wifi)
             Task { @MainActor in
                 guard let self else { return }
-                // 网络恢复连接 → 触发检测
-                let reconnected = satisfied && !self.wasSatisfied && wifi
+                let reason: WiFiChangeReason?
+                if !self.hasReceivedInitialPath {
+                    // NWPathMonitor 的首次回调只是状态基线，不是网络切换。
+                    self.hasReceivedInitialPath = true
+                    reason = nil
+                } else if satisfied && wifi && !self.wasSatisfied {
+                    reason = .reconnected
+                } else if satisfied && wifi && !self.wasWiFiEnabled {
+                    // 蜂窝网络和 Wi-Fi 都可能是 satisfied，不能只比较 status。
+                    reason = .interfaceChanged
+                } else {
+                    reason = nil
+                }
                 self.wasSatisfied = satisfied
+                self.wasWiFiEnabled = wifi
                 self.isSatisfied = satisfied
                 self.isWiFiEnabled = wifi
-                if reconnected {
-                    self.notifyWiFiChanged()
+                if let reason {
+                    self.notifyWiFiChanged(reason: reason)
                 }
             }
         }
@@ -37,11 +61,9 @@ final class NetworkMonitor: ObservableObject {
         startSSIDPolling()
     }
 
-    var isAirplaneMode: Bool { !isSatisfied }
-
     /// Registers a Wi-Fi-change observer and returns a token that must be removed.
     @discardableResult
-    func observeWiFiChanges(_ handler: @escaping @MainActor () -> Void) -> UUID {
+    func observeWiFiChanges(_ handler: @escaping @MainActor (WiFiChangeReason) -> Void) -> UUID {
         let token = UUID()
         wifiChangeHandlers[token] = handler
         return token
@@ -51,9 +73,9 @@ final class NetworkMonitor: ObservableObject {
         wifiChangeHandlers.removeValue(forKey: token)
     }
 
-    private func notifyWiFiChanged() {
+    private func notifyWiFiChanged(reason: WiFiChangeReason) {
         for handler in wifiChangeHandlers.values {
-            handler()
+            handler(reason)
         }
     }
 
@@ -62,9 +84,16 @@ final class NetworkMonitor: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 let ssid = Self.fetchSSID()
-                if ssid != self.currentSSID, ssid != nil {
-                    self.currentSSID = ssid
-                    self.notifyWiFiChanged()
+                self.currentSSID = ssid
+                guard let ssid else { return }
+                guard let previousSSID = self.lastKnownSSID else {
+                    // 首次取得 SSID 只是建立基线，不能当作用户切换了 Wi-Fi。
+                    self.lastKnownSSID = ssid
+                    return
+                }
+                if ssid != previousSSID {
+                    self.lastKnownSSID = ssid
+                    self.notifyWiFiChanged(reason: .ssidChanged)
                 }
             }
         }
