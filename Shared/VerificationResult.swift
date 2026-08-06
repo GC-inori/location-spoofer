@@ -31,7 +31,7 @@ enum VerificationResult: Equatable, Identifiable {
         switch self {
         case .success: return nil
         case .proxyNotRunning, .verificationInProgress, .verificationSuperseded: return nil
-        case .certNotTrusted: return nil  // 走完整引导页，不弹 tip
+        case .certNotTrusted: return .certificate
         case .wifiProxyNotConfigured: return .proxySetup
         case .coordinateWriteFailed, .patchFailed: return .rewriteFailed
         }

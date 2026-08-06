@@ -32,13 +32,17 @@ targets:
         HEADER_SEARCH_PATHS: "$(PROJECT_DIR)/Core"
         SWIFT_OBJC_BRIDGING_HEADER: App/PaopaoLocationSpoofer-Bridging-Header.h
         OTHER_LDFLAGS: "$(inherited) -lwloccore"
-        LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/Core/build"
+        LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/Core/build/$(PLATFORM_NAME)"
 
   PaopaoLocationSpooferTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests/PaopaoLocationSpooferTests
+    settings:
+      base:
+        HEADER_SEARCH_PATHS: "$(PROJECT_DIR)/Core"
+        SWIFT_OBJC_BRIDGING_HEADER: App/PaopaoLocationSpoofer-Bridging-Header.h
     dependencies:
       - target: PaopaoLocationSpoofer
 

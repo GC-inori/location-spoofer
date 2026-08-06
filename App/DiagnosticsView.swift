@@ -15,20 +15,37 @@ struct RuntimeLogsView: View {
     @State private var copiedEntryID: UUID?
     @State private var copyLogsConfirmed = false
     @State private var testLogCopied = false
+    @State private var logFilter = ""
+
+    private var filteredEntries: [RuntimeLogEntry] {
+        let q = logFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return entries }
+        return entries.filter { $0.message.localizedCaseInsensitiveContains(q) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             testPanel
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("过滤日志", text: $logFilter)
+                    .textFieldStyle(.plain).font(.caption)
+                if !logFilter.isEmpty {
+                    Button { logFilter = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)
+                    }
+                }
+            }.padding(.horizontal, 12).padding(.vertical, 6)
             Divider()
-            if entries.isEmpty {
+            if filteredEntries.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "doc.text.magnifyingglass").font(.largeTitle).foregroundStyle(.secondary)
-                    Text("暂无运行日志").foregroundStyle(.secondary)
+                    Text(entries.isEmpty ? "暂无运行日志" : "无匹配日志").foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(entries.reversed()) { entry in logRow(entry) }
+                        ForEach(filteredEntries.reversed()) { entry in logRow(entry) }
                     }.padding(12)
                 }
             }

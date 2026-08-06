@@ -33,3 +33,17 @@ func TestGenerateCA(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGenerateCAUsesUniquePrivateKeys(t *testing.T) {
+	_, firstKey, err := generateCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secondKey, err := generateCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(firstKey) == string(secondKey) {
+		t.Fatal("generated CA private keys must not be deterministic")
+	}
+}

@@ -231,6 +231,20 @@ final class MapLocationState: ObservableObject {
         viewportMeters = max(50, distanceMeters)
     }
 
+    /// Updates only the map representation of the current physical selection.
+    /// This preserves revision/source so an in-flight user action is not invalidated.
+    func reprojectSelectionForTileChange(_ coordinate: CLLocationCoordinate2D) {
+        guard CLLocationCoordinate2DIsValid(coordinate),
+              !selection.coordinate.isApproximatelyEqual(to: coordinate) else { return }
+        selection = MapSelection(
+            coordinate: coordinate,
+            source: selection.source,
+            explicitName: selection.explicitName,
+            revision: selection.revision
+        )
+        issueCameraCommand(.focus(coordinate: coordinate, distanceMeters: viewportMeters))
+    }
+
     @discardableResult
     func acceptPlaceDescriptor(_ descriptor: MapPlaceDescriptor, selectionRevision: UInt64) -> Bool {
         guard selection.revision == selectionRevision, selection.explicitName == nil else { return false }
@@ -292,17 +306,21 @@ enum ViewportStore {
     private static let key = "mapViewportMeters"
     static func save(_ meters: CLLocationDistance) {
         UserDefaults.standard.set(meters, forKey: key)
+        RuntimeLogger.info("APP", "缩放", "存储缩放", details: ["zoom": String(meters)])
     }
     /// 取持久化缩放值；未存过返回 nil
     static func load() -> CLLocationDistance? {
         let v = UserDefaults.standard.double(forKey: key)
-        return v > 0 ? v : nil
+        let result = v > 0 ? v : nil
+        RuntimeLogger.info("APP", "缩放", "读取缩放", details: ["zoom": result.map { String($0) } ?? "nil"])
+        return result
     }
     /// 取持久化缩放值，取不到返回默认 1km 并立即存储
     static func loadOrDefault() -> CLLocationDistance {
         if let v = load() { return v }
         let fallback: CLLocationDistance = 1_000
         save(fallback)
+        RuntimeLogger.info("APP", "缩放", "使用默认缩放 1km")
         return fallback
     }
 }

@@ -28,6 +28,7 @@ final class SetupCoordinator: ObservableObject {
         trustState = .checking
         message = "正在检测…"
         testLog = ""
+        defer { needsSetup = !canModify }
         do {
             _ = try certificateStore.ensure()
             if !proxy.isRunning { try await proxy.start() }
@@ -40,11 +41,7 @@ final class SetupCoordinator: ObservableObject {
                 kCFNetworkProxiesHTTPProxy as String: "127.0.0.1",
                 kCFNetworkProxiesHTTPPort as String: 8888,
             ]
-            // 用当前保存的虚拟定位坐标做测试；没有则用默认坐标
-            let saved = WlocSettingsStore.load()
-            let testLat = saved?.latitude ?? 22.543099
-            let testLon = saved?.longitude ?? 113.934576
-            let testAccuracy = saved?.accuracy ?? 25
+            // This probe verifies proxy reachability and TLS trust only; it does not validate a selected coordinate.
             let req = makeWlocRequest()
             let (_, resp) = try await URLSession(configuration: config).data(for: req)
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -69,7 +66,6 @@ final class SetupCoordinator: ObservableObject {
                 message = "检测失败 [\(ns.domain) \(ns.code)]: \(ns.localizedDescription)"
             }
         }
-        needsSetup = !canModify
     }
 
     func sceneDidBecomeActive() {}

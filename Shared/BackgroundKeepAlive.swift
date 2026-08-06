@@ -17,7 +17,7 @@ final class BackgroundKeepAlive {
         guard isActive, let info = notification.userInfo,
               let type = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               type == AVAudioSession.InterruptionType.ended.rawValue else { return }
-        start()
+        restartAfterInterruption()
         RuntimeLogger.info("APP", "KeepAlive", "音频中断恢复")
     }
 
@@ -48,6 +48,16 @@ final class BackgroundKeepAlive {
         engine = eng; playerNode = player
         UIApplication.shared.isIdleTimerDisabled = true
         RuntimeLogger.info("APP", "KeepAlive", "后台保活已启动（静音音频）")
+    }
+
+    private func restartAfterInterruption() {
+        guard isActive else { return }
+        playerNode?.stop()
+        engine?.stop()
+        playerNode = nil
+        engine = nil
+        isActive = false
+        start()
     }
 
     func stop() {

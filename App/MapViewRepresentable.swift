@@ -48,6 +48,9 @@ struct MapViewRepresentable: UIViewRepresentable {
         map.delegate = context.coordinator
         map.showsUserLocation = true
         let initialDistance = ViewportStore.loadOrDefault()
+        RuntimeLogger.info("APP", "地图", "makeUIView", details: [
+            "zoom": String(initialDistance)
+        ])
         map.setRegion(
             MKCoordinateRegion(
                 center: selection.coordinate,
@@ -156,6 +159,11 @@ struct MapViewRepresentable: UIViewRepresentable {
         private let pinSize: CGFloat = 38
         // 蓝点实际大小从 MKUserLocationView 取，默认 20pt
         private var userDotDiameter: CGFloat = 20
+        private var keyboardObserverTokens: [NSObjectProtocol] = []
+
+        deinit {
+            keyboardObserverTokens.forEach(NotificationCenter.default.removeObserver)
+        }
 
         @objc func zoomInTapped() { parent.onZoomIn?() }
         @objc func zoomOutTapped() { parent.onZoomOut?() }
@@ -175,15 +183,16 @@ struct MapViewRepresentable: UIViewRepresentable {
         }
 
         func setupKeyboardObservers() {
+            guard keyboardObserverTokens.isEmpty else { return }
             let nc = NotificationCenter.default
-            nc.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
+            keyboardObserverTokens.append(nc.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
                 guard let self, let map = self.map else { return }
                 self.updatePinPosition(on: map)
-            }
-            nc.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
+            })
+            keyboardObserverTokens.append(nc.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
                 guard let self, let map = self.map else { return }
                 self.updatePinPosition(on: map)
-            }
+            })
         }
 
         func consume(_ command: MapCameraCommand?, on map: MKMapView) {
@@ -197,8 +206,7 @@ struct MapViewRepresentable: UIViewRepresentable {
             let region: MKCoordinateRegion
             switch command.kind {
             case let .focus(coordinate, _):
-                // 保持当前 span 不变，只移动中心点，避免 latitudinalMeters
-                // 与 visibleVerticalDistance 之间因屏幕宽高比引入 2x 漂移
+                // 保持当前 span 不变，避免正方形 region 在竖屏 inflate
                 region = MKCoordinateRegion(center: coordinate, span: map.region.span)
             case let .zoom(factor):
                 region = MKCoordinateRegion(
@@ -260,7 +268,6 @@ struct MapViewRepresentable: UIViewRepresentable {
             parent.onViewportChanged(distance)
             zoomLabel?.text = MapZoomMath.viewportScaleLabel(distanceMeters: distance)
             updatePinPosition(on: mapView)
-            // 同步蓝点坐标
             // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
             if let ul = mapView.userLocation.location,
                CLLocationCoordinate2DIsValid(ul.coordinate), ul.horizontalAccuracy >= 0 {

@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,10 +94,10 @@ func newProxy(cert *tls.Certificate) *goproxy.ProxyHttpServer {
 		}
 		if r.URL.Path == "/coords" {
 			stateMu.Lock()
-			enabled, lat, lon := currentEnabled, currentLat, currentLon
+			enabled, lat, lon, accuracy := currentEnabled, currentLat, currentLon, currentAccuracy
 			stateMu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(fmt.Sprintf(`{"enabled":%t,"lat":%.6f,"lon":%.6f,"accuracy":%d}`, enabled, lat, lon, currentAccuracy)))
+			w.Write([]byte(fmt.Sprintf(`{"enabled":%t,"lat":%.6f,"lon":%.6f,"accuracy":%d}`, enabled, lat, lon, accuracy)))
 			return
 		}
 		if r.URL.Path == "/proxy.mobileconfig" || r.URL.Path == "/proxy.mobileconfig/" {
@@ -152,14 +151,8 @@ func newProxy(cert *tls.Certificate) *goproxy.ProxyHttpServer {
 	}
 
 	proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		body := []byte(nil)
-		if req.Body != nil {
-			body, _ = io.ReadAll(req.Body)
-			req.Body.Close()
-			req.Body = io.NopCloser(bytes.NewReader(body))
-		}
-		logEvent(fmt.Sprintf("proxy request target=%s method=%s path=%s size=%d body_prefix=%s",
-			req.Host, req.Method, req.URL.Path, len(body), hexPrefix(body, 64)))
+		// Do not buffer or log arbitrary global-proxy traffic. Keep requests streaming
+		// and do not persist unrelated request content in diagnostics.
 		return serveLocalRequests(req, ctx)
 	})
 	proxy.OnResponse().DoFunc(patchWlocResponse)
@@ -176,7 +169,7 @@ func serveLocalRequests(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request
 	}
 	if (h == "baidu.com" || h == "www.baidu.com") && strings.HasPrefix(req.URL.Path, "/paopao-verify-") {
 		token := strings.TrimPrefix(req.URL.Path, "/paopao-verify-")
-		logEvent("verify request path=" + req.URL.Path + " token=" + token)
+		logEvent("verify request received")
 		if checkVerifyToken(token) {
 			resp := goproxy.NewResponse(req, "text/plain", http.StatusOK, token)
 			resp.Header.Set("Cache-Control", "no-store")
@@ -229,41 +222,36 @@ func patchWlocResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Respons
 	enabled, lat, lon, accuracy := currentEnabled, currentLat, currentLon, currentAccuracy
 	stateMu.Unlock()
 
+	const maxPatchBodyBytes int64 = 1 << 20
+	if resp.ContentLength > maxPatchBodyBytes {
+		logEvent(fmt.Sprintf("wloc response passed through: body exceeds patch limit (%d bytes)", resp.ContentLength))
+		return resp
+	}
+
 	originalBody := resp.Body
-	body, err := io.ReadAll(originalBody)
-	originalBody.Close()
+	body, err := io.ReadAll(io.LimitReader(originalBody, maxPatchBodyBytes+1))
 	if err != nil {
 		logEvent("wloc response read failed: " + err.Error())
-		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), originalBody))
 		return resp
 	}
-	logEvent(fmt.Sprintf("wloc upstream response status=%d size=%d headers=[%s] body_prefix=%s",
-		resp.StatusCode, len(body), summarizeHeaders(resp.Header), hexPrefix(body, 64)))
+	if int64(len(body)) > maxPatchBodyBytes {
+		logEvent("wloc response passed through: body exceeds patch limit")
+		resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), originalBody))
+		return resp
+	}
+	originalBody.Close()
 
-	if !enabled {
-		logEvent("wloc upstream response passed through (spoofing disabled)")
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		return resp
-	}
-	if resp.StatusCode != http.StatusOK {
-		logEvent(fmt.Sprintf("wloc upstream response passed through (status %d != 200)", resp.StatusCode))
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		return resp
-	}
-	if len(body) == 0 {
-		logEvent("wloc upstream response empty, passed through")
+	if !enabled || resp.StatusCode != http.StatusOK || len(body) == 0 {
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		return resp
 	}
 
 	patched, stats, err := patchResponseBody(body, wlocCoords{Latitude: lat, Longitude: lon, Accuracy: accuracy})
-	if err != nil {
-		logEvent("wloc patch skipped: " + err.Error())
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		return resp
-	}
-	if bytes.Equal(patched, body) {
-		logEvent("wloc patch produced identical body, passed through")
+	if err != nil || bytes.Equal(patched, body) {
+		if err != nil {
+			logEvent("wloc patch skipped: " + err.Error())
+		}
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		return resp
 	}
@@ -273,28 +261,8 @@ func patchWlocResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Respons
 	resp.Header.Del("Content-Encoding")
 	resp.Header.Del("Transfer-Encoding")
 	resp.Header.Set("Content-Length", strconv.Itoa(len(patched)))
-	logEvent(fmt.Sprintf("wloc patched target=%.6f,%.6f accuracy=%d locations=%d wifi=%d cell=%d skipped=%d in=%d out=%d body_prefix=%s",
-		lat, lon, accuracy, stats.Locations, stats.WiFi, stats.Cell, stats.Skipped, len(body), len(patched), hexPrefix(patched, 64)))
+	logEvent(fmt.Sprintf("wloc patched locations=%d wifi=%d cell=%d skipped=%d in=%d out=%d", stats.Locations, stats.WiFi, stats.Cell, stats.Skipped, len(body), len(patched)))
 	return resp
-}
-
-func hexPrefix(b []byte, n int) string {
-	if len(b) > n {
-		b = b[:n]
-	}
-	return fmt.Sprintf("%x", b)
-}
-
-func summarizeHeaders(h http.Header) string {
-	if len(h) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(h))
-	for k, v := range h {
-		parts = append(parts, k+"="+strings.Join(v, ","))
-	}
-	sort.Strings(parts)
-	return strings.Join(parts, "; ")
 }
 
 func generateProxyMobileConfig() string {

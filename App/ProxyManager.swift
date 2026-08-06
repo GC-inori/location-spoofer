@@ -25,9 +25,9 @@ final class ProxyManager: ObservableObject {
             let lon = settings.flatMap { $0.enabled ? $0.longitude : nil } ?? 0
             let enabled = (settings?.enabled ?? false) ? CInt(1) : CInt(0)
             let accuracy = CInt(settings?.accuracy ?? 25)
-            RuntimeLogger.info("APP", "坐标转换", "启动代理: WGS-84", details: [
-                "lat": String(lat), "lon": String(lon)
-            ])
+            if enabled != 0 {
+                RuntimeLogger.info("APP", "坐标转换", "启动代理: 恢复上次 WGS-84 定位")
+            }
             let result: UInt = authority.certPEM.withCString { cp in
                 authority.keyPEM.withCString { kp in
                     UInt(wloccore_startproxy(UnsafeMutablePointer(mutating: cp), UnsafeMutablePointer(mutating: kp), CDouble(lat), CDouble(lon), enabled, accuracy))
@@ -62,8 +62,7 @@ final class ProxyManager: ObservableObject {
         RuntimeLogger.info("APP", "Proxy.coords", "写入坐标", details: [
             "revision": String(coordinateRevision),
             "enabled": String(enabled),
-            "lat": String(lat),
-            "lon": String(lon)
+            "accuracy": String(accuracy)
         ])
         return coordinateRevision
     }

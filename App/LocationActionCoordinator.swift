@@ -70,9 +70,8 @@ final class LocationActionCoordinator: ObservableObject {
             enabled: true,
             accuracy: favorite.accuracy
         )
-        RuntimeLogger.info("APP", "坐标转换", "写入代理: WGS-84", details: [
-            "lat": String(wgs.lat),
-            "lon": String(wgs.lon)
+        RuntimeLogger.info("APP", "坐标转换", "已向代理写入 WGS-84 坐标", details: [
+            "accuracy": String(favorite.accuracy)
         ])
         state = .idle
         virtualLocationEnabled = true

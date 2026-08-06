@@ -10,8 +10,8 @@ final class NetworkMonitor: ObservableObject {
     @Published private(set) var isWiFiEnabled = true
     @Published private(set) var currentSSID: String?
 
-    /// WiFi 重连或 SSID 变化时触发（仅虚拟定位激活时使用）
-    var onWiFiChanged: (() -> Void)?
+    /// WiFi 重连或 SSID 变化时触发的订阅。调用方必须在离开页面时移除订阅。
+    private var wifiChangeHandlers: [UUID: @MainActor () -> Void] = [:]
 
     private let monitor = NWPathMonitor()
     private var ssidTimer: Timer?
@@ -29,7 +29,7 @@ final class NetworkMonitor: ObservableObject {
                 self.isSatisfied = satisfied
                 self.isWiFiEnabled = wifi
                 if reconnected {
-                    self.onWiFiChanged?()
+                    self.notifyWiFiChanged()
                 }
             }
         }
@@ -39,6 +39,24 @@ final class NetworkMonitor: ObservableObject {
 
     var isAirplaneMode: Bool { !isSatisfied }
 
+    /// Registers a Wi-Fi-change observer and returns a token that must be removed.
+    @discardableResult
+    func observeWiFiChanges(_ handler: @escaping @MainActor () -> Void) -> UUID {
+        let token = UUID()
+        wifiChangeHandlers[token] = handler
+        return token
+    }
+
+    func removeWiFiChangeObserver(_ token: UUID) {
+        wifiChangeHandlers.removeValue(forKey: token)
+    }
+
+    private func notifyWiFiChanged() {
+        for handler in wifiChangeHandlers.values {
+            handler()
+        }
+    }
+
     private func startSSIDPolling() {
         ssidTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -46,7 +64,7 @@ final class NetworkMonitor: ObservableObject {
                 let ssid = Self.fetchSSID()
                 if ssid != self.currentSSID, ssid != nil {
                     self.currentSSID = ssid
-                    self.onWiFiChanged?()
+                    self.notifyWiFiChanged()
                 }
             }
         }

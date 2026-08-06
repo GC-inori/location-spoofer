@@ -64,19 +64,32 @@ func wloccore_startproxy(certData, keyData *C.char, lat, lon C.double, enabled C
 //export wloccore_stopproxy
 func wloccore_stopproxy(h C.uintptr_t) C.int {
 	logEvent("stopproxy requested")
-	handle := cgo.Handle(h)
-	srv, ok := handle.Value().(*http.Server)
-	handle.Delete()
+	srv, handle, ok := proxyForHandle(h)
 	if !ok {
 		logEvent("stopproxy failed: invalid handle")
 		return 1
 	}
+	handle.Delete()
 	if err := stopProxy(srv); err != nil {
 		logEvent("stopproxy failed: " + err.Error())
 		return 2
 	}
 	logEvent("stopproxy completed")
 	return 0
+}
+
+func proxyForHandle(h C.uintptr_t) (server *http.Server, handle cgo.Handle, ok bool) {
+	if h == 0 {
+		return nil, 0, false
+	}
+	defer func() {
+		if recover() != nil {
+			server, handle, ok = nil, 0, false
+		}
+	}()
+	handle = cgo.Handle(h)
+	server, ok = handle.Value().(*http.Server)
+	return server, handle, ok
 }
 
 //export wloccore_setcoords
@@ -87,7 +100,7 @@ func wloccore_setcoords(lat, lon C.double, enabled C.int, accuracy C.int) {
 	currentEnabled = enabled != 0
 	currentAccuracy = int(accuracy)
 	stateMu.Unlock()
-	logEvent("setcoords enabled=" + strconv.FormatBool(enabled != 0) + " lat=" + strconv.FormatFloat(float64(lat), 'f', 6, 64) + " lon=" + strconv.FormatFloat(float64(lon), 'f', 6, 64) + " accuracy=" + strconv.Itoa(int(accuracy)))
+	logEvent("setcoords enabled=" + strconv.FormatBool(enabled != 0) + " accuracy=" + strconv.Itoa(int(accuracy)))
 }
 
 //export wloccore_getcoords
@@ -127,12 +140,17 @@ func wloccore_startcertserver(certData, keyData *C.char) C.uintptr_t {
 	return C.uintptr_t(cgo.NewHandle(server))
 }
 
-func certificateServerForHandle(h C.uintptr_t) (*certificateServer, cgo.Handle, bool) {
+func certificateServerForHandle(h C.uintptr_t) (server *certificateServer, handle cgo.Handle, ok bool) {
 	if h == 0 {
 		return nil, 0, false
 	}
-	handle := cgo.Handle(h)
-	server, ok := handle.Value().(*certificateServer)
+	defer func() {
+		if recover() != nil {
+			server, handle, ok = nil, 0, false
+		}
+	}()
+	handle = cgo.Handle(h)
+	server, ok = handle.Value().(*certificateServer)
 	return server, handle, ok
 }
 

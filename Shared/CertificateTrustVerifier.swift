@@ -5,8 +5,9 @@ final class CertificateTrustVerifier {
     /// Check whether a CA certificate (given as PEM data) is installed and fully trusted
     /// by the system. Uses SecTrust evaluation against system anchors only — no network needed.
     static func isCACertificateTrusted(certPEM: String) -> Bool {
-        guard let certData = certPEM.data(using: .utf8),
-              let cert = SecCertificateCreateWithData(nil, certData as CFData) else {
+        guard let pemData = certPEM.data(using: .utf8),
+              let block = pemData.pemCertificateBlock,
+              let cert = SecCertificateCreateWithData(nil, block as CFData) else {
             RuntimeLogger.error("APP", "Trust", "无法解析 CA 证书 PEM")
             return false
         }
@@ -36,5 +37,15 @@ final class CertificateTrustVerifier {
 
         RuntimeLogger.info("APP", "Trust", result ? "CA 证书已被系统信任" : "CA 证书未被系统信任")
         return result
+    }
+}
+
+private extension Data {
+    var pemCertificateBlock: Data? {
+        guard let text = String(data: self, encoding: .utf8),
+              let begin = text.range(of: "-----BEGIN CERTIFICATE-----"),
+              let end = text.range(of: "-----END CERTIFICATE-----") else { return nil }
+        let body = text[begin.upperBound..<end.lowerBound].components(separatedBy: .whitespacesAndNewlines).joined()
+        return Data(base64Encoded: body)
     }
 }

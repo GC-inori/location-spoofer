@@ -72,7 +72,7 @@ final class RealtimeLocationManagerTests: XCTestCase {
 
     func testOneShotTimeoutTransitionsToContinuousFallback() async {
         let driver = FakeRealtimeLocationDriver()
-        let manager = RealtimeLocationManager(driver: driver, timeoutNanoseconds: 5_000_000)
+        let manager = RealtimeLocationManager(driver: driver, oneShotTimeoutNanoseconds: 5_000_000, fallbackTimeoutNanoseconds: 1_000_000_000)
 
         let request = Task { await manager.requestLocation() }
         try? await Task.sleep(nanoseconds: 20_000_000)

@@ -1,34 +1,35 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/binary"
 	"encoding/pem"
-	"io"
 	"math/big"
-	"math/rand"
 	"time"
 )
 
-func deterministicReader() io.Reader {
-	seed := sha256.Sum256([]byte("paopao-location-spoofer-ca-v1"))
-	src := rand.NewSource(int64(binary.BigEndian.Uint64(seed[:8])))
-	return rand.New(src)
+func randomSerialNumber() (*big.Int, error) {
+	// Keep the serial positive and within the RFC 5280 recommended 20-octet bound.
+	limit := new(big.Int).Lsh(big.NewInt(1), 159)
+	return rand.Int(rand.Reader, limit)
 }
 
 func generateCA() (certPEM, keyPEM []byte, err error) {
-	rng := deterministicReader()
-	privateKey, err := rsa.GenerateKey(rng, 2048)
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serialNumber, err := randomSerialNumber()
 	if err != nil {
 		return nil, nil, err
 	}
 
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
+		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			Organization: []string{"WLOC"},
 			CommonName:   "WLOC CA " + time.Now().In(time.FixedZone("CST", 8*3600)).Format("2006.01.02 15:04"),
@@ -41,7 +42,7 @@ func generateCA() (certPEM, keyPEM []byte, err error) {
 		IsCA:                  true,
 	}
 
-	certDER, err := x509.CreateCertificate(rng, &template, &template, &privateKey.PublicKey, privateKey)
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
 	if err != nil {
 		return nil, nil, err
 	}

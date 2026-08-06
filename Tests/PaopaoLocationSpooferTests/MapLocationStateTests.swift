@@ -14,8 +14,7 @@ final class MapLocationStateTests: XCTestCase {
         state.selectUserMapCenter(.init(latitude: 31.23, longitude: 121.47))
         let accepted = state.acceptRealtimeLocation(
             .init(latitude: 39.90, longitude: 116.40),
-            intent: request,
-            focus: true
+            intent: request
         )
 
         XCTAssertFalse(accepted)
@@ -53,7 +52,7 @@ final class MapLocationStateTests: XCTestCase {
         XCTAssertEqual(state.selection.source, .userPan)
 
         let intent = state.beginRealtimeIntent()
-        XCTAssertTrue(state.acceptRealtimeLocation(.init(latitude: 25, longitude: 116), intent: intent, focus: true))
+        XCTAssertTrue(state.acceptRealtimeLocation(.init(latitude: 25, longitude: 116), intent: intent))
         XCTAssertEqual(state.selection.source, .realtime)
     }
 
@@ -180,14 +179,29 @@ final class MapLocationStateTests: XCTestCase {
         state.updateRealtimeLocation(nativeLocation)
         let intent = state.beginRealtimeIntent()
 
-        XCTAssertTrue(state.acceptRealtimeLocation(nativeLocation.coordinate, intent: intent, focus: true))
+        XCTAssertTrue(state.acceptRealtimeLocation(nativeLocation.coordinate, intent: intent))
         XCTAssertEqual(state.selection.source, .realtime)
         XCTAssertEqual(state.selection.coordinate.latitude, 30.42, accuracy: 0.000001)
-        guard case let .focus(coordinate, distance) = state.cameraCommand?.kind else {
-            return XCTFail("Expected realtime focus command")
+        XCTAssertNil(state.cameraCommand, "realtime updates preserve the current camera unless the caller explicitly focuses it")
+    }
+
+    func testTileReprojectionPreservesSelectionIdentityAndIssuesFocus() {
+        let state = MapLocationState(initialCoordinate: initial)
+        let favoriteID = UUID()
+        state.selectFavorite(.init(latitude: 22.55, longitude: 113.95), id: favoriteID, name: "测试收藏")
+        let revision = state.selection.revision
+
+        state.reprojectSelectionForTileChange(.init(latitude: 22.54, longitude: 113.94))
+
+        XCTAssertEqual(state.selection.source, .favorite(favoriteID))
+        XCTAssertEqual(state.selection.explicitName, "测试收藏")
+        XCTAssertEqual(state.selection.revision, revision)
+        XCTAssertEqual(state.selection.coordinate.latitude, 22.54, accuracy: 0.000001)
+        guard case let .focus(coordinate, distanceMeters) = state.cameraCommand?.kind else {
+            return XCTFail("Expected a focus command after tile reprojection")
         }
-        XCTAssertEqual(coordinate.latitude, 30.42, accuracy: 0.000001)
-        XCTAssertEqual(distance, 200)
+        XCTAssertEqual(coordinate.latitude, 22.54, accuracy: 0.000001)
+        XCTAssertEqual(distanceMeters, state.viewportMeters)
     }
 
     func testZoomMathScalesBothAxesInTheSameDirection() {

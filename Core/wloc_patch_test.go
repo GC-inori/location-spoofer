@@ -4,7 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
@@ -106,5 +112,111 @@ func TestTransparentBodyUnchanged(t *testing.T) {
 	_, _, err := patchResponseBody(body, wlocCoords{Latitude: 31.230416, Longitude: 121.473701, Accuracy: 25})
 	if err == nil {
 		t.Fatal("expected non-patchable body to error")
+	}
+}
+
+func TestPatchWlocResponsePassesThroughOversizedBody(t *testing.T) {
+	payload := bytes.Repeat([]byte("x"), (1<<20)+1)
+	req := httptest.NewRequest(http.MethodPost, "https://gs-loc.apple.com/clls/wloc", nil)
+	resp := &http.Response{
+		StatusCode:    http.StatusOK,
+		Request:       req,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(bytes.NewReader(payload)),
+		ContentLength: int64(len(payload)),
+	}
+
+	patched := patchWlocResponse(resp, nil)
+	got, err := io.ReadAll(patched.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatal("oversized WLOC response was changed or truncated")
+	}
+}
+
+func TestServeLocalRequestsKeepsUnrelatedRequestBodyStreaming(t *testing.T) {
+	const secret = "body-must-not-be-buffered-or-logged"
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/upload", bytes.NewBufferString(secret))
+	returned, response := serveLocalRequests(req, nil)
+	if response != nil {
+		t.Fatalf("unexpected local response: %d", response.StatusCode)
+	}
+	got, err := io.ReadAll(returned.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != secret {
+		t.Fatalf("request body changed: got %q", got)
+	}
+	if logs := drainLogs(); bytes.Contains([]byte(logs), []byte(secret)) {
+		t.Fatal("request body leaked into diagnostic logs")
+	}
+}
+
+func TestCoordsEndpointReturnsAtomicSnapshot(t *testing.T) {
+	stateMu.Lock()
+	previousLat, previousLon := currentLat, currentLon
+	previousEnabled, previousAccuracy := currentEnabled, currentAccuracy
+	currentLat, currentLon, currentEnabled, currentAccuracy = 0, 0, false, 0
+	stateMu.Unlock()
+	t.Cleanup(func() {
+		stateMu.Lock()
+		currentLat, currentLon = previousLat, previousLon
+		currentEnabled, currentAccuracy = previousEnabled, previousAccuracy
+		stateMu.Unlock()
+	})
+
+	handler := newProxy(nil).NonproxyHandler
+	const updates = 20_000
+	const readers = 8
+	const readsPerReader = 2_500
+
+	var writers sync.WaitGroup
+	writers.Add(1)
+	go func() {
+		defer writers.Done()
+		for i := 1; i <= updates; i++ {
+			stateMu.Lock()
+			currentLat = float64(i)
+			currentLon = -float64(i)
+			currentEnabled = i%2 == 0
+			currentAccuracy = i
+			stateMu.Unlock()
+		}
+	}()
+
+	errs := make(chan error, readers)
+	var readersGroup sync.WaitGroup
+	for range readers {
+		readersGroup.Add(1)
+		go func() {
+			defer readersGroup.Done()
+			for i := 0; i < readsPerReader; i++ {
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://proxy.local/coords", nil))
+				var snapshot struct {
+					Enabled  bool    `json:"enabled"`
+					Lat      float64 `json:"lat"`
+					Lon      float64 `json:"lon"`
+					Accuracy int     `json:"accuracy"`
+				}
+				if err := json.Unmarshal(recorder.Body.Bytes(), &snapshot); err != nil {
+					errs <- err
+					return
+				}
+				if snapshot.Lat != 0 && (snapshot.Lon != -snapshot.Lat || snapshot.Accuracy != int(snapshot.Lat)) {
+					errs <- fmt.Errorf("torn coordinate snapshot: %+v", snapshot)
+					return
+				}
+			}
+		}()
+	}
+	readersGroup.Wait()
+	writers.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }

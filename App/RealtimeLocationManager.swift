@@ -280,11 +280,9 @@ final class RealtimeLocationManager: NSObject, ObservableObject, CLLocationManag
         activeRequest = nil
         isRequesting = false
 
-        if let coordinate {
+        if coordinate != nil {
             RuntimeLogger.info("APP", "定位", "获取到实时定位", details: [
-                "requestID": String(requestID),
-                "lat": String(coordinate.latitude),
-                "lon": String(coordinate.longitude)
+                "requestID": String(requestID)
             ])
         } else {
             RuntimeLogger.warning("APP", "定位", "实时定位请求结束但没有坐标", details: ["requestID": String(requestID)])
