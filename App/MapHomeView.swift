@@ -46,6 +46,7 @@ private enum RealtimeCoordinateSource: Equatable {
 }
 
 struct MapHomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var setup: SetupCoordinator
     @StateObject private var favorites: FavoriteLocationStore
     @StateObject private var actions = LocationActionCoordinator()
@@ -78,10 +79,15 @@ struct MapHomeView: View {
     @State private var wifiChangeObserverToken: UUID?
     @State private var wifiVerificationTask: Task<Void, Never>?
     @State private var wifiVerificationID: UUID?
-    @State private var copyConfirmed = false
+    @State private var copiedCoordinateSystem: CoordinateConverter.MapCoordinateSystem?
     @State private var spoofState: SpoofState = .idle
     @State private var locationOperationTask: Task<Void, Never>?
     @State private var locationOperationID: UInt64 = 0
+    @State private var mapCoordinateSystemRefreshTask: Task<Void, Never>?
+    @State private var mapCoordinateSystemRefreshID: UInt64 = 0
+    @State private var bluePointRefreshPending = false
+    @State private var realtimeButtonTask: Task<Void, Never>?
+    @State private var favoriteSaveTask: Task<Void, Never>?
     // 激活时的坐标（本地存，绕过 C 桥接层精度丢失）
     @State private var activeSpoofLat: Double?
     @State private var activeSpoofLon: Double?
@@ -232,7 +238,7 @@ struct MapHomeView: View {
                                     .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
                             }
                         }
-                        .disabled(realtimeRequestTask != nil || realtime.isRequesting)
+                        .disabled(realtimeButtonTask != nil || realtimeRequestTask != nil || realtime.isRequesting)
                     }
                 }
                 .padding(.trailing, 16)
@@ -279,6 +285,19 @@ struct MapHomeView: View {
             wifiVerificationTask?.cancel()
             wifiVerificationTask = nil
             wifiVerificationID = nil
+            mapCoordinateSystemRefreshTask?.cancel()
+            mapCoordinateSystemRefreshTask = nil
+            bluePointRefreshPending = false
+            realtimeButtonTask?.cancel()
+            realtimeButtonTask = nil
+            favoriteSaveTask?.cancel()
+            favoriteSaveTask = nil
+        }
+        .onChange(of: scenePhase) { phase in
+            guard phase == .active else { return }
+            Task { @MainActor in
+                await awaitCoordinatedMapCoordinateSystemRefresh(reason: "App回到前台")
+            }
         }
         .onChange(of: proxy.isRunning) { running in
             if runtimeMode.mode == .localWiFi, !running && spoofState == .active {
@@ -412,27 +431,8 @@ struct MapHomeView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(mapState.displayName ?? "当前选点").font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text(String(format: "%.6f, %.6f", mapState.selection.coordinate.latitude, mapState.selection.coordinate.longitude))
-                        .font(.caption.monospaced())
-                        .foregroundStyle(copyConfirmed ? .green : .secondary)
-                        .onTapGesture {
-                            let text = String(format: "%.6f, %.6f", mapState.selection.coordinate.latitude, mapState.selection.coordinate.longitude)
-                            UIPasteboard.general.string = text
-                            RuntimeLogger.info("APP", "地图", "已复制坐标")
-                            copyConfirmed = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copyConfirmed = false }
-                        }
-                        .overlay(alignment: .top) {
-                            if copyConfirmed {
-                                Text("已复制")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(.green, in: Capsule())
-                                    .offset(y: -24)
-                            }
-                        }
+                    coordinateRow(label: "国内标准 GCJ-02", system: .gcj02)
+                    coordinateRow(label: "国际标准 WGS-84", system: .wgs84)
                 }
                 Spacer()
                 // 帮助说明按钮
@@ -457,23 +457,7 @@ struct MapHomeView: View {
                         favorites.select(nil)
                         return
                     }
-                    let snapshot = currentSelectionFavorite
-                    RuntimeLogger.info("APP", "坐标转换", "保存当前选点为收藏", details: [
-                        "当前地图标准": CoordinateConverter.currentMapCoordinateSystem.diagnosticName,
-                        "输入字段": CoordinateConverter.currentMapCoordinateSystem.diagnosticName,
-                        "持久化字段": "国际标准(WGS-84)+国内标准(GCJ-02)"
-                    ])
-                    let favorite = favorites.save(
-                        name: snapshot.name,
-                        mapCoordinate: mapState.selection.coordinate,
-                        mapCoordinateSystem: CoordinateConverter.currentMapCoordinateSystem,
-                        accuracy: snapshot.accuracy
-                    )
-                    mapState.selectFavorite(
-                        favorite.coordinatePair.coordinate(for: CoordinateConverter.currentMapCoordinateSystem),
-                        id: favorite.id,
-                        name: favorite.name
-                    )
+                    saveCurrentSelectionAsFavorite()
                 } label: {
                     Image(systemName: favorites.selectedFavoriteID != nil ? "star.fill" : "star")
                         .font(.system(size: 18, weight: .semibold))
@@ -482,6 +466,7 @@ struct MapHomeView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(favorites.selectedFavoriteID != nil ? .orange : .gray)
+                .disabled(favoriteSaveTask != nil)
                 .accessibilityLabel(favorites.selectedFavoriteID != nil ? "已收藏，点击取消收藏" : "收藏当前选点")
             }
             // 收藏
@@ -761,6 +746,58 @@ struct MapHomeView: View {
         )
     }
 
+    private var currentSelectionPair: CoordinatePair {
+        if let stored = LastCoordinateStore.load(),
+           stored.coordinate(for: CoordinateConverter.currentMapCoordinateSystem)
+            .isApproximatelyEqual(to: mapState.selection.coordinate) {
+            return stored.coordinatePair
+        }
+        return CoordinatePair(
+            mapCoordinate: mapState.selection.coordinate,
+            mapCoordinateSystem: CoordinateConverter.currentMapCoordinateSystem
+        )
+    }
+
+    private func coordinateRow(
+        label: String,
+        system: CoordinateConverter.MapCoordinateSystem
+    ) -> some View {
+        let coordinate = currentSelectionPair.coordinate(for: system)
+        let text = String(format: "%.6f, %.6f", coordinate.latitude, coordinate.longitude)
+        return HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 112, alignment: .leading)
+            Text(text)
+                .font(.caption.monospaced())
+                .foregroundStyle(copiedCoordinateSystem == system ? .green : .secondary)
+                .lineLimit(1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIPasteboard.general.string = text
+            copiedCoordinateSystem = system
+            RuntimeLogger.info("APP", "地图", "已复制坐标", details: [
+                "坐标标准": system.diagnosticName
+            ])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if copiedCoordinateSystem == system { copiedCoordinateSystem = nil }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if copiedCoordinateSystem == system {
+                Text("已复制")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(.green, in: Capsule())
+                    .offset(y: -24)
+            }
+        }
+    }
+
     private var testFavorite: FavoriteLocation { currentSelectionFavorite }
 
     private func startMapRuntimeOnce() {
@@ -774,19 +811,152 @@ struct MapHomeView: View {
         scheduleGeocode(pair: pair, revision: mapState.selection.revision)
     }
 
-    private func reprojectMapSelection(for change: CoordinateConverter.MapCoordinateSystemChange) {
+    @discardableResult
+    private func reprojectMapSelection(for change: CoordinateConverter.MapCoordinateSystemChange) -> Bool {
         // Every current selection is persisted as a complete coordinate pair at
         // its input boundary. Replaying the matching stored representation
         // avoids a second GCJ/WGS conversion and its accumulated offset.
         guard let stored = LastCoordinateStore.load() else {
             RuntimeLogger.warning("APP", "坐标转换", "地图坐标标准切换时未找到当前选点缓存")
-            return
+            return false
         }
         mapState.reprojectSelectionForMapCoordinateSystemChange(stored.coordinate(for: change.current))
         RuntimeLogger.info("APP", "坐标转换", "地图坐标标准切换后已使用缓存坐标对回显当前选点", details: [
             "from": change.previous.rawValue,
             "to": change.current.rawValue
         ])
+        return true
+    }
+
+    private func applyRuntimeMapCoordinateSystemChange(
+        _ change: CoordinateConverter.MapCoordinateSystemChange,
+        reason: String
+    ) {
+        geocodeDebounceTask?.cancel()
+        reverseGeocodeTask?.cancel()
+        searchRequestID &+= 1
+        isSearching = false
+        searchResults = []
+        searchError = ""
+        realtimeRequestTask?.cancel()
+        realtimeRequestTask = nil
+        realtimeRequestContext = nil
+        mapState.clearRealtimeLocationForMapCoordinateSystemChange()
+        let pinWasReprojected = reprojectMapSelection(for: change)
+        if let stored = LastCoordinateStore.load() {
+            scheduleGeocode(pair: stored.coordinatePair, revision: mapState.selection.revision)
+        }
+        RuntimeLogger.warning("APP", "坐标转换", "地图坐标类型已变化", details: [
+            "触发原因": reason,
+            "旧类型": change.previous.diagnosticName,
+            "新类型": change.current.diagnosticName,
+            "图钉已按新类型重设": String(pinWasReprojected),
+            "蓝点缓存": "已清理",
+            "搜索结果": "已清理",
+            "异步地理编码": "已重置"
+        ])
+    }
+
+    @discardableResult
+    private func refreshRuntimeMapCoordinateSystem(reason: String) async -> Bool {
+        let result = await CoordinateConverter.refreshRuntimeMapCoordinateSystem(reason: reason)
+        guard !Task.isCancelled else { return false }
+        switch result {
+        case .changed(let change):
+            applyRuntimeMapCoordinateSystemChange(change, reason: reason)
+            return true
+        case .unchanged:
+            return true
+        case .unavailable, .cancelled:
+            return false
+        }
+    }
+
+    private func scheduleBluePointMapCoordinateSystemRefresh() {
+        guard mapCoordinateSystemRefreshTask == nil else {
+            bluePointRefreshPending = true
+            return
+        }
+        mapCoordinateSystemRefreshID &+= 1
+        let refreshID = mapCoordinateSystemRefreshID
+        mapCoordinateSystemRefreshTask = Task { @MainActor in
+            defer {
+                if refreshID == mapCoordinateSystemRefreshID {
+                    let needsAnotherRefresh = bluePointRefreshPending && !Task.isCancelled
+                    mapCoordinateSystemRefreshTask = nil
+                    bluePointRefreshPending = false
+                    if needsAnotherRefresh {
+                        scheduleBluePointMapCoordinateSystemRefresh()
+                    }
+                }
+            }
+            // Coalesce the didUpdate/regionDidChange pair generated by one
+            // native location sample without caching the probe result.
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled, refreshID == mapCoordinateSystemRefreshID else { return }
+            var attempt = 0
+            repeat {
+                bluePointRefreshPending = false
+                _ = await refreshRuntimeMapCoordinateSystem(reason: "MapKit蓝点新样本")
+                attempt += 1
+            } while !Task.isCancelled
+                && refreshID == mapCoordinateSystemRefreshID
+                && bluePointRefreshPending
+                && attempt < 2
+        }
+    }
+
+    private func awaitCoordinatedMapCoordinateSystemRefresh(reason: String) async {
+        if let pendingRefresh = mapCoordinateSystemRefreshTask {
+            await pendingRefresh.value
+            return
+        }
+        mapCoordinateSystemRefreshID &+= 1
+        let refreshID = mapCoordinateSystemRefreshID
+        let task = Task { @MainActor in
+            _ = await refreshRuntimeMapCoordinateSystem(reason: reason)
+        }
+        mapCoordinateSystemRefreshTask = task
+        await task.value
+        if refreshID == mapCoordinateSystemRefreshID {
+            mapCoordinateSystemRefreshTask = nil
+        }
+    }
+
+    private func saveCurrentSelectionAsFavorite() {
+        guard favoriteSaveTask == nil else { return }
+        let snapshot = currentSelectionFavorite
+        // Preserve the pair created when this selection entered the map. If
+        // the runtime probe changes type, replay its other stored field instead
+        // of reinterpreting the old visible coordinate as the new type.
+        let pair = currentSelectionPair
+        let selectionRevision = mapState.selection.revision
+        favoriteSaveTask = Task { @MainActor in
+            defer { favoriteSaveTask = nil }
+            await awaitCoordinatedMapCoordinateSystemRefresh(reason: "保存收藏")
+            guard !Task.isCancelled else {
+                return
+            }
+            guard mapState.selection.revision == selectionRevision else {
+                RuntimeLogger.info("APP", "坐标转换", "取消保存收藏：检测期间当前选点已变化")
+                return
+            }
+            RuntimeLogger.info("APP", "坐标转换", "保存当前选点为收藏", details: [
+                "当前地图标准": CoordinateConverter.currentMapCoordinateSystem.diagnosticName,
+                "持久化字段": "国际标准(WGS-84)+国内标准(GCJ-02)"
+            ])
+            let favorite = favorites.save(
+                name: snapshot.name,
+                coordinatePair: pair,
+                accuracy: snapshot.accuracy
+            )
+            mapState.selectFavorite(
+                pair.coordinate(for: CoordinateConverter.currentMapCoordinateSystem),
+                id: favorite.id,
+                name: favorite.name
+            )
+            LastCoordinateStore.save(coordinatePair: pair, zoomMeters: mapState.viewportMeters)
+        }
     }
 
     private func registerWiFiChangeObserver() {
@@ -916,6 +1086,18 @@ struct MapHomeView: View {
     }
 
     private func requestRealtimeLocation() {
+        guard realtimeButtonTask == nil else { return }
+        realtimeButtonTask = Task { @MainActor in
+            defer { realtimeButtonTask = nil }
+            await awaitCoordinatedMapCoordinateSystemRefresh(reason: "点击实时定位")
+            guard !Task.isCancelled else {
+                return
+            }
+            performRealtimeLocationRequest()
+        }
+    }
+
+    private func performRealtimeLocationRequest() {
         let intent = mapState.beginRealtimeIntent()
         RuntimeLogger.info("APP", "实时定位", "用户点击实时定位", details: [
             "intentID": String(intent.id),
@@ -951,6 +1133,7 @@ struct MapHomeView: View {
     private func handleNativeRealtimeLocation(_ location: CLLocation) {
         mapState.updateRealtimeLocation(location)
         logSpoofCoordinateDiagnosisIfNeeded(location)
+        scheduleBluePointMapCoordinateSystemRefresh()
         guard let context = realtimeRequestContext else {
             return
         }
@@ -1079,14 +1262,7 @@ struct MapHomeView: View {
         sourceDescription: String
     ) {
         let currentViewport = mapState.viewportMeters
-        let previousMapCoordinateSystem = CoordinateConverter.currentMapCoordinateSystem
         let sourceCoordinateSystem = source.coordinateSystem
-        let mapCoordinateSystemChange = source == .coreLocation
-            ? CoordinateConverter.correctMapCoordinateSystemUsingRealtime(coordinate)
-            : nil
-        if let change = mapCoordinateSystemChange {
-            reprojectMapSelection(for: change)
-        }
         let pair = CoordinateConverter.coordinatePair(
             lat: coordinate.latitude,
             lon: coordinate.longitude,
@@ -1103,9 +1279,7 @@ struct MapHomeView: View {
             "intentID": String(intent.id),
             "intent选点revision": String(intent.selectionRevision),
             "当前选点revision": String(mapState.selection.revision),
-            "修正前地图标准": previousMapCoordinateSystem.rawValue,
-            "修正后地图标准": CoordinateConverter.currentMapCoordinateSystem.rawValue,
-            "地图标准发生修正": String(mapCoordinateSystemChange != nil),
+            "App已确认地图标准": CoordinateConverter.currentMapCoordinateSystem.rawValue,
             "accepted": String(accepted),
             "显示坐标字段": CoordinateConverter.currentMapCoordinateSystem.rawValue,
             "持久化字段": "WGS-84+GCJ-02"
