@@ -41,7 +41,7 @@ ${COMMITS}
 ## 自签安装
 
 - Release 附件为未签名 IPA，安装前需要自行签名。
-- 可使用免费 Apple ID 和 Impact 完成签名安装，无需付费开发者账号。
+- 可使用免费 Apple ID 和 Impactor 完成签名安装，无需付费开发者账号。
 - 签名时请保留 Bundle ID \`com.paopaolabs.location-spoofer\`、App Group \`group.com.paopaolabs.location-spoofer\` 及原有 entitlements。
 - 免费 Apple ID 签名通常只有 7 天有效期，到期后需要重新签名安装。
 

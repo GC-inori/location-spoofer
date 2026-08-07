@@ -73,4 +73,4 @@ if [ "$run_tests" -eq 1 ]; then
   run_simulator_tests
 fi
 
-echo "Next: sign with Impact (https://github.com/claration/Impactor) and install on device."
+echo "Next: sign with Impactor (https://github.com/claration/Impactor) and install on device."

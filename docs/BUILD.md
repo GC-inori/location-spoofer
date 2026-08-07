@@ -32,12 +32,12 @@ Output:
 dist/PaopaoLocationSpoofer-unsigned.ipa
 ```
 
-IPA 始终保持未签名。用 [Impact](https://github.com/claration/Impactor) 签名安装即可。
+IPA 始终保持未签名。用 [Impactor](https://github.com/claration/Impactor) 签名安装即可。
 
 ## 发布验收
 
 1. `./build.sh` 通过并输出未签名 IPA
-2. 用 Impact 签名后安装到设备
+2. 用 Impactor 签名后安装到设备
 3. 真机安装后，先配置 WiFi HTTP 代理 `127.0.0.1:8888`，再按检测结果完成 CA 下载、安装和信任
 4. 环境检测通过后，选点开启虚拟定位
 5. 打开 Apple 地图验证定位是否变为虚拟位置

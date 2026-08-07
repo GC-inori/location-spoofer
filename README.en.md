@@ -2,216 +2,393 @@
 
 # 📍 Location Spoofer
 
-### iOS Location Spoofer · DingTalk · WeChat · Apple Watch Region Unlock · Fake GPS
+### iOS Location Service Research & Testing Framework
 
-**No jailbreak — rewrite Apple location-service responses through App Mode's on-device Wi-Fi HTTP proxy or Third-party Proxy Mode (Wi-Fi/4G/5G).**<br>
-Designed for DingTalk, WeChat, Apple Maps, and other apps that read system location. Map selection, favorites, mode setup, environment checks, and diagnostics live in one app.
+An open-source project for **iOS location-service research, software development testing, and QA validation**.
+
+The project uses either an on-device proxy or a third-party proxy client to simulate selected Apple location-service
+responses in a controlled test environment.
 
 [![iOS 15+](https://img.shields.io/badge/iOS-15%2B-111111?logo=apple)](project.yml)
-[![Swift 5.9](https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white)](project.yml)
-[![Go 1.23+](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)](Core/go.mod)
+[![Swift 5.9](https://img.shields.io/badge/Swift-5.9-F05138)](project.yml)
+[![Go 1.23+](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go)](Core/go.mod)
 [![Version](https://img.shields.io/badge/version-v1.0.1-2563EB)](docs/CHANGELOG.md)
-[![App Mode](https://img.shields.io/badge/App%20Mode-No%20VPN-16A34A)](#how-it-works)
 
-[Features](#key-features) · [Quick Start](#quick-start) · [How It Works](#how-it-works) · [中文](README.md) · [Changelog](docs/CHANGELOG.md)
-
-<img src="images/主界面.jpg" alt="Location Spoofer iOS Fake GPS main interface" width="380">
+[Features](#feature-overview) ·
+[How It Works](#how-it-works) ·
+[Quick Start](#quick-start) ·
+[Build](#building-the-project) ·
+[中文](README.md)
 
 </div>
 
 > [!IMPORTANT]
-> This project is only for education, security research, and testing on devices you own. App Mode requires a locally generated CA and a manual HTTP proxy on the current Wi-Fi network. In Third-party Proxy Mode, the selected client owns certificate, MITM, and proxy/VPN setup. Results vary by iOS version, network, location cache, and target-app behavior. Follow applicable laws, network policies, and service terms.
+> Use this project only for education, research, testing on devices you own, software development, and QA validation.
+>
+> Use it only on devices, networks, and software environments that you own or are authorized to test. Follow applicable
+> laws, network policies, and service terms.
+>
+> The project does not guarantee compatibility with every iOS version or third-party app, and it does not promise to
+> bypass third-party security controls, business restrictions, or service rules.
 
-## Credits
+## Project Scope
 
-The core location-response rewriting approach and Go implementation are based on [Yu9191/wloc](https://github.com/Yu9191/wloc). This project adds a SwiftUI interface, MapKit selection, certificate and proxy guidance, environment verification, favorites, and diagnostics.
+Location Spoofer is a tool for studying iOS location-service behavior and testing location-dependent software.
 
-## Why Location Spoofer?
+It provides:
 
-Unlike tools that require a computer to stay connected, developer debugging, or a jailbroken device, Location Spoofer keeps selection and control on the iPhone. It provides two mutually exclusive paths: run the Go proxy inside the app, or synchronize coordinates to an existing third-party proxy client.
+- Native map selection and location-scenario switching;
+- Controlled simulation of selected Apple location-service responses;
+- App Mode and Third-party Proxy Mode;
+- Map coordinate detection with paired WGS-84 and GCJ-02 values;
+- Environment checks, runtime logs, and diagnostics;
+- Favorite locations and restoration of the previous map state.
 
-| Feature | Description |
+The project does not modify the target app's source code and does not provide telemetry, remote control, or data
+collection services.
+
+## Feature Overview
+
+- **Native map interaction**
+  - Uses MapKit for the map and system blue dot;
+  - Supports search, map taps, center-point dragging, and zooming;
+  - Supports favorites and restoration of the latest selection;
+  - Shows both domestic and international coordinate representations with separate copy actions.
+
+- **Location-service response simulation**
+  - Processes only the Apple location-service requests defined by the project;
+  - Returns the selected coordinates in a controlled test environment;
+  - Does not require changes to the target app.
+
+- **Two runtime modes**
+  - App Mode: runs the Go proxy on-device and covers only the current Wi-Fi network;
+  - Third-party Proxy Mode: uses a supported proxy client and may cover Wi-Fi, 4G, or 5G depending on that client.
+
+- **Environment checks**
+  - App Mode checks the local proxy, CA trust, and request path;
+  - Third-party Proxy Mode checks the WLOC configuration API and module response;
+  - Failures route to the relevant setup or diagnostics screen.
+
+- **Development diagnostics**
+  - Runtime logs;
+  - Log copy and cleanup;
+  - Map coordinate-system change records;
+  - Sanitized issue-report generation.
+
+## How It Works
+
+### App Mode
+
+App Mode runs the local Go proxy inside the app. A manual HTTP proxy on the current Wi-Fi routes the selected requests
+through that on-device proxy.
+
+```text
+iOS location request
+      │
+      │ Manual HTTP proxy on the current Wi-Fi
+      ▼
+On-device wloccore Go proxy
+      │
+      │ Handle selected Apple location-service requests
+      ▼
+Apple location-service response
+      │
+      │ Test coordinate response
+      ▼
+The system and apps read the location result
+```
+
+App Mode:
+
+- Does not create a Network Extension;
+- Does not display or occupy the system VPN slot;
+- Covers only the current Wi-Fi network;
+- Requires a manual HTTP proxy on that Wi-Fi network;
+- Requires installation and trust of the CA generated by the app;
+- Handles only the Apple location-service and environment-verification traffic defined by the project. It is not a
+  general-purpose packet capture tool.
+
+### Third-party Proxy Mode
+
+Third-party Proxy Mode does not start the app's Go proxy and does not use the CA generated by the app.
+
+```text
+Map selection
+  │
+  │ WGS-84 coordinates
+  ▼
+WLOC configuration API
+  │
+  ▼
+Third-party proxy client stores the configuration
+  │
+  ▼
+Third-party client processes location-service requests
+```
+
+In this mode:
+
+- The app owns map selection, favorites, coordinate synchronization, and coordinate clearing;
+- The third-party client owns proxy/VPN, MITM, certificates, and rule execution;
+- The third-party client owns coordinate persistence;
+- Wi-Fi, 4G, and 5G support depends on the client;
+- The configuration may remain active after Location Spoofer closes.
+
+Do not enable App Mode interception and Third-party Proxy Mode interception at the same time.
+
+## Runtime Modes
+
+### App Mode
+
+Suitable for:
+
+- Wi-Fi-only device testing;
+- Local testing without a third-party proxy client;
+- Workflows that need in-app proxy, certificate, and environment guidance.
+
+Requirements:
+
+- An iOS device;
+- A Wi-Fi network that permits manual HTTP proxy configuration;
+- Installation and trust of the local CA;
+- Completion of the in-app proxy and environment checks.
+
+### Third-party Proxy Mode
+
+Suitable for:
+
+- Tests that need Wi-Fi, 4G, or 5G coverage;
+- Existing supported proxy-client workflows;
+- Cases where the third-party client should keep the proxy configuration active.
+
+Current client status:
+
+| Client | Status |
 |---|---|
-| 🔀 **Two runtime modes** | App Mode needs no third-party client and works over Wi-Fi; Third-party Proxy Mode can follow its client across Wi-Fi, 4G, and 5G. |
-| 📱 **No jailbreak** | Can be installed through self-signing; minimum deployment target is iOS 15. |
-| 🗺️ **Native Maps experience** | The same blue dot and selection gestures as Apple Maps — search, tap, and drag. |
-| 📍 **Location-response rewriting** | Can affect DingTalk, WeChat, Apple Maps, Amap, and other apps that read system location; verify compatibility on-device. |
-| 🔍 **Visible map scale** | Left-side controls show the current visible range; place name adapts to zoom level. |
-| 🧭 **Coordinate consistency** | Reconciles MapKit map coordinates with WGS-84 for favorites, restoration, and third-party sync. |
-| 🧪 **Mode-aware checks** | App Mode checks the local proxy, CA trust, and Wi-Fi path; Third-party Mode verifies real module interception. |
-| 🧾 **Diagnostics** | Search and copy logs, or generate a sanitized GitHub Issue report from inside the app. |
+| Shadowrocket | Currently used for on-device testing |
+| Surge | Configuration provided, not fully verified |
+| Quantumult X | Configuration provided, not fully verified |
+| Loon | Configuration provided, not fully verified |
+| Stash | Configuration provided, not fully verified |
+| Egern | Uses the Surge module, not fully verified |
 
-## Screenshots
+Module snapshots and provenance:
 
-| Main Interface | Apple Maps | Amap | Apple Watch |
-|---|---|---|---|
-| ![Location Spoofer main interface](images/主界面.jpg) | ![Apple Maps result](images/Apple%20Map.jpg) | ![Amap result](images/高德地图.jpg) | ![Apple Watch region feature](images/高血压.jpg) |
+- [Third-party module documentation](docs/THIRD_PARTY_MODULES.md)
+- [Yu9191/wloc](https://github.com/Yu9191/wloc)
 
-## Key Features
-
-- **iOS Location Spoofer / Fake GPS**: Apply the selected pin to App Mode's proxy or synchronize it to a third-party WLOC module.
-- **Native map and real-time location**: Uses MapKit's blue dot with search, tap, map-center drag, zoom controls, and a shortcut to Apple Maps.
-- **Concurrency-safe selection**: Pan, tap, search, favorites, and async location respect the user's latest intent; stale results won't overwrite newer selections.
-- **Hierarchical place names**: POI, street, or road at close zoom; neighborhood, district, city, or province at wider zoom.
-- **Map scale display**: Zoom controls show the current visible range.
-- **Favorites and state restoration**: Save, rename, and switch frequent locations while remembering the last pin and map range.
-- **Automatic coordinate handling**: Resolves the map's coordinate convention at startup and keeps paired WGS-84/map coordinates to reduce mainland-China map offsets.
-- **Mode-specific onboarding**: App Mode guides local proxy and CA setup; Third-party Mode guides client selection, subscription import, and connection testing.
-- **Local-proxy keep-alive**: App Mode uses silent audio while spoofing to remain active in the background and rechecks the environment after Wi-Fi changes.
-- **Structured diagnostics**: Logs rotate automatically, retain only three days, and can be filtered, copied, cleared, or attached to an Issue report.
-- **Third-party Proxy Mode (testing)**: Query, save, or clear WGS-84 coordinates through a WLOC module. The proxy client persists state, so spoofing may continue after this app closes.
+The selected client owns its certificates, MITM configuration, and proxy switches. Review third-party modules and
+scripts before importing them.
 
 ## Quick Start
 
 ### 1. Install the App
 
-Release assets are unsigned IPA files and must be installed with a sideloading tool:
+You can use:
 
-1. **Enable sideloading support**: On iOS 16 or later, open Settings → Privacy & Security → Developer Mode, enable it, then restart and confirm when prompted. iOS 15 does not have this switch, so skip this step there.
-2. **Download the IPA**: Open this project's [Releases](https://github.com/xweiba/location-spoofer/releases) and download the latest `PaopaoLocationSpoofer-unsigned.ipa`.
-3. **Prepare a sideloading tool**: Download the appropriate Impact build from [Impact Releases](https://github.com/claration/Impactor/releases/latest). Aisi Assistant/i4Tools or another tool that supports signing and installing IPA files may also be used.
-4. **Connect and install**: Connect the iPhone to the computer with a USB cable, tap “Trust This Computer” on the phone, select the downloaded IPA in the sideloading tool, and follow that tool's prompts to sign and install it.
+- Your own Apple Developer signing environment;
+- A self-signing tool suitable for personal testing;
+- The unsigned IPA published in Releases;
+- A source build produced on macOS using the [build guide](docs/BUILD.md).
 
-> Impact supports Windows, macOS, and Linux. If Windows cannot detect the device, install iTunes to provide the Apple device drivers. Aisi Assistant/i4Tools is third-party software; download it only from its official source and assess its account, certificate, and privacy risks yourself.
+Free self-signing environments may not provide Network Extension capabilities. App Mode therefore uses an on-device
+proxy plus a manual Wi-Fi HTTP proxy and does not depend on a VPN component.
 
-If iOS blocks the installed app, trust its developer app under Settings → General → VPN & Device Management. A free Apple ID signature normally expires after seven days and must then be renewed; this is separate from the WLOC CA certificate. Keep the app Bundle ID `com.paopaolabs.location-spoofer`, the App Group `group.com.paopaolabs.location-spoofer`, and the declared entitlements unchanged.
+#### Self-Signing Instructions
 
-To build the unsigned IPA yourself on macOS with Xcode, follow the [build guide](docs/BUILD.md), then use the same sideloading steps above to sign and install it.
+Release assets are unsigned IPA files and must be installed on an iPhone with a self-signing tool:
 
-### 2. Choose a Runtime Mode
+1. **Enable sideloading support**: On iOS 16 or newer, open Settings → Privacy & Security → Developer Mode, enable it,
+   then restart and confirm when prompted. iOS 15 does not have this switch, so skip this step.
+2. **Download the IPA**: Open this project's [Releases](https://github.com/xweiba/location-spoofer/releases) and download
+   the latest `PaopaoLocationSpoofer-unsigned.ipa`.
+3. **Prepare signing software**: Download the appropriate Impactor build from
+   [Impactor Releases](https://github.com/claration/Impactor/releases). Other tools that support self-signing and installing
+   IPA files, such as Aisi Assistant, may also be used.
+4. **Connect and install**: Connect the iPhone to the computer with a USB cable, choose “Trust This Computer” on the
+   phone, select the downloaded IPA in the signing software, and follow that tool's instructions to sign and install it.
 
-#### App Mode (On-device Wi-Fi)
+Impactor supports Windows, macOS, and Linux. If Windows cannot detect the device, install the Apple device drivers supplied
+with iTunes first. Aisi Assistant is third-party software; obtain it from its official channel and evaluate its account,
+certificate, and privacy risks yourself.
 
-Choose App Mode during first launch, then follow the in-app guide to configure the proxy and CA. This mode starts `wloccore` on the device and has no third-party client dependency, but its traffic entry point covers only the current Wi-Fi.
+After installation, if iOS blocks the app from opening, go to Settings → General → VPN & Device Management and trust the
+corresponding developer app. A free Apple ID signature normally expires after seven days and must then be renewed.
 
-On the current Wi-Fi network, set Configure Proxy to Manual:
+### 2. First Launch
 
-```text
-Server: 127.0.0.1
-Port: 8888
-Authentication: off
-```
+1. Choose App Mode or Third-party Proxy Mode;
+2. Complete the corresponding in-app setup;
+3. Run the environment check;
+4. Search, tap, or drag on the map to select a test location;
+5. Enable the test location and verify the result in the authorized test environment.
 
-Return to the app and run the environment check. If the CA is not trusted, the app opens the complete certificate setup flow. Download the profile, then:
+### 3. Restore the Real Location
 
-```text
-Settings → General → VPN & Device Management → install WLOC CA
-Settings → General → About → Certificate Trust Settings → enable full trust
-```
+App Mode:
 
-#### Third-party Proxy Mode (Testing)
+1. Stop the test location;
+2. Disable the manual HTTP proxy on the current Wi-Fi network;
+3. Follow the in-app instructions to refresh the location environment.
 
-The app handles map selection, favorites, and querying, saving, or clearing WGS-84 coordinates. A third-party proxy client handles WLOC interception, MITM, and persistence. This mode does not start the local Go proxy, use the app-generated CA, or require `127.0.0.1:8888`. Network coverage depends on the selected client and may include Wi-Fi, 4G, and 5G.
+Third-party Proxy Mode:
 
-Select a client during onboarding or from Settings → Runtime Mode. The app can copy the official subscription URL and open the selected client; paste that URL into its module, rewrite, or override subscription UI.
+1. Clear the WLOC coordinates from the app;
+2. Disable the corresponding module or proxy in the third-party client;
+3. Restore HTTPS decryption and proxy settings according to the client documentation.
 
-| Client | Verification status | Configuration |
-|---|---|---|
-| Shadowrocket | **Currently available for testing** | [wloc.module](https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.module) |
-| Surge | Provided, not verified | [wloc.sgmodule](https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.sgmodule) |
-| Quantumult X | Provided, not verified | [wloc.conf](https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.conf) |
-| Loon | Provided, not verified | [wloc.lpx](https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.lpx) |
-| Stash | Provided, not verified | [wloc.stoverride](https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.stoverride) |
-| Egern | Provided, not verified | Uses the Surge module |
+Location caches may take time to refresh. Restart the device if the system or target app continues to show an old
+location.
 
-For Shadowrocket, also enable HTTPS decryption for `gs-loc.apple.com`. Import `.stoverride` directly into Stash without Script Hub conversion; Egern reuses the Surge module. The client—not this app—owns module enablement, MITM, certificates, and proxy/VPN state. A connection test passes only when the endpoint returns valid module JSON, not merely HTTP 200. Bundled snapshots and provenance are documented in [Third-party Module Snapshots](docs/THIRD_PARTY_MODULES.md).
+## Coordinate Handling
 
-### 3. Select a Location & Enable
+The project stores two coordinate representations:
 
-1. Search, tap, or drag the map to pick a location; use the location button to return to the MapKit blue dot, or save the pin as a favorite.
-2. In App Mode, tap “Start Spoofing” and wait for verification. In Third-party Proxy Mode, tap “Sync to Third-party Proxy.”
-3. Follow the in‑app activation instructions to refresh airplane mode, Wi‑Fi, and location services.
-4. Open Apple Maps or your target app to verify.
+- WGS-84: the international standard used for WLOC writes;
+- GCJ-02: the domestic map representation used where required.
 
-### 4. Restore Your Real Location
+MapKit does not expose a public API that reports whether its current runtime output uses GCJ-02 or WGS-84. The project
+uses a fixed-anchor query to resolve the active representation and performs controlled refreshes after blue-dot changes
+and explicit user actions.
 
-In App Mode, stop spoofing and disable the current Wi-Fi's manual proxy. In Third-party Mode, use “Clear Third-party Proxy Coordinates,” then disable the module or proxy connection if needed. Follow the in-app deactivation instructions to refresh the system location cache; restart the device if the old location remains.
+Each write boundary stores a complete WGS-84/GCJ-02 pair. Rendering selects the field matching the confirmed map
+representation instead of repeatedly converting an already typed value.
 
-## How It Works
-
-### Why App Mode Needs No VPN
-
-```text
-iPhone location request
-        │ Wi‑Fi HTTP proxy: 127.0.0.1:8888
-        ▼
-Local wloccore Go proxy
-        │ Handles only the targeted Apple location-service traffic
-        ▼
-Apple location service response
-        │ The selected coordinate is written into the response
-        ▼
-The system and applications receive the modified result
-```
-
-App Mode does not create a Network Extension tunnel, so it does not display or occupy a VPN connection. **It still requires the current Wi-Fi's manual HTTP proxy and a fully trusted local CA.**
-
-### Third-party Proxy Mode
+## Project Structure
 
 ```text
-Map pin (WGS-84) → WLOC settings endpoint → proxy module stores coordinate
-                                             │
-Location request → third-party proxy/VPN + MITM ┘→ rewritten response
+App/        SwiftUI interface, MapKit, location, and runtime flow
+Core/       Go proxy, certificate server, and location-response handling
+Shared/     Coordinates, favorites, logs, configuration, and shared models
+Resources/  Info.plist, Entitlements, and resources
+Config/     Build configuration
+Scripts/    Build, packaging, and validation scripts
+Tests/      XCTest and Shell contract tests
+docs/       Build, module, and release documentation
 ```
 
-The selected client owns proxy/VPN, certificates, and MITM and may cover cellular networks. Do not enable both interception paths at once.
+## Building the Project
 
-## Data & Security Notes
+Source builds require:
 
-- App Mode generates its CA and private key on-device. The private key is stored in the iOS Keychain; only the CA profile is installed into the system trust store.
-- Third-party modules and runtime scripts come from the upstream project. Review them before importing. Bundled snapshots provide release provenance and do not imply that every client has been verified.
-- Runtime logs live in the App Group container, rotate automatically, and retain only three days. They can be copied or cleared in-app. Exportable real-time-location diagnostics omit exact coordinates by default.
-- A self-signed CA or third-party MITM changes the device's HTTPS trust/proxy path. Disable the proxy or module when unused and remove certificates if appropriate.
+- macOS;
+- Xcode;
+- Xcode Command Line Tools;
+- XcodeGen;
+- Go 1.23 or newer.
 
-## Compatibility
-
-| Item | Requirement |
-|---|---|
-| iOS | 15.0+ |
-| Build | macOS, Xcode, XcodeGen |
-| Swift | 5.9 |
-| Go | 1.23+ |
-| Network | App Mode: Wi-Fi with manual HTTP proxy support; Third-party Mode (testing): client-dependent Wi-Fi/4G/5G |
-| Installation | Self-sign or use release builds |
-
-Actual behavior may vary with iOS version, network conditions, system location cache, device model, and the target app's own location strategy. Compatibility with every iOS version or third-party app is not guaranteed.
-
-## Build & Project Structure
-
-Building requires macOS, Xcode Command Line Tools, Go 1.23+, and XcodeGen:
+Building the iOS app directly on Windows is not supported.
 
 ```bash
-./build.sh          # build the unsigned IPA
-./build.sh --test   # also run iOS Simulator unit tests
+git clone https://github.com/xweiba/location-spoofer.git
+cd location-spoofer
+
+./build.sh
 ```
 
-The unsigned IPA is at:
+Build and run Simulator tests:
+
+```bash
+./build.sh --test
+```
+
+The build script generates an unsigned IPA:
 
 ```text
 dist/PaopaoLocationSpoofer-unsigned.ipa
 ```
 
-```text
-App/        SwiftUI, MapKit, location and setup flow
-Core/       Go local proxy and location response rewriting
-Shared/     Favorites, settings, logs, and shared models
-Resources/  Info.plist, Entitlements, and icons
-Config/     Build configuration
-Scripts/    Build, signing, and verification scripts
-Tests/      XCTest and Bash contract tests
-docs/       Build, third-party module, and release documentation
-```
+Deploy it to a test device using your own signing and installation process.
 
-## Documentation & Feedback
+## Privacy and Security Boundaries
+
+- The project contains no telemetry or remote-control service;
+- The project does not automatically upload location data;
+- Runtime logs remain in the device App Group container and retain only the latest three days;
+- Issue reports are copied by the user before being submitted to GitHub;
+- App Mode accesses the local proxy and the environment-verification URL;
+- Third-party Proxy Mode may access the upstream module URL and the WLOC configuration endpoint;
+- The CA private key generated by the app is stored in the device Keychain;
+- Third-party MITM, certificates, and proxy behavior are owned by the selected client.
+
+Do not post real locations, authentication information, CA private keys, or complete sensitive logs in public issues.
+
+## Limitations
+
+- iOS updates may change location-service behavior;
+- MapKit coordinate output can vary with the system, region, and location environment;
+- System location caches may delay visible changes;
+- Each third-party proxy client requires separate compatibility testing;
+- Not every app uses the same location API;
+- Not every app or service accepts test coordinates;
+- Behavior is not guaranteed across every network, device model, or iOS version.
+
+## Contributing
+
+Contributions are welcome for:
+
+- Bug reports;
+- Feature requests;
+- Compatibility results;
+- Performance improvements;
+- Documentation improvements;
+- Additional tests.
+
+When filing an issue, include:
+
+- iOS version;
+- Device model;
+- Runtime mode;
+- Reproduction steps;
+- Sanitized runtime logs;
+- Whether a third-party proxy client was used.
+
+## Documentation
 
 - [Build guide](docs/BUILD.md)
-- [Third-party module snapshots](docs/THIRD_PARTY_MODULES.md)
+- [Third-party module documentation](docs/THIRD_PARTY_MODULES.md)
 - [Changelog](docs/CHANGELOG.md)
 - [中文文档](README.md)
 - [GitHub Issues](https://github.com/xweiba/location-spoofer/issues)
 
-When reporting issues, please include reproduction steps, iOS version, device model, and sanitized runtime logs.
+## Feature Preview
 
-## Links
+These screenshots show the main interface and selected on-device test scenarios. Actual results depend on the iOS
+version, network environment, system caches, and the target app's location strategy; they are not a compatibility
+guarantee for every app or release.
 
-**LinuxDo** — [https://linux.do](https://linux.do/)
+<table>
+  <tr>
+    <th>Main interface</th>
+    <th>Apple Maps test</th>
+    <th>Amap test</th>
+  </tr>
+  <tr>
+    <td><img src="images/主界面.jpg" alt="Location Spoofer map selection interface" width="220"></td>
+    <td><img src="images/Apple%20Map.jpg" alt="Apple Maps location test scenario" width="220"></td>
+    <td><img src="images/高德地图.jpg" alt="Amap location test scenario" width="220"></td>
+  </tr>
+  <tr>
+    <th>WeChat test</th>
+    <th>DingTalk test</th>
+    <th>Apple Watch scenario test</th>
+  </tr>
+  <tr>
+    <td><img src="images/微信.jpg" alt="WeChat location test scenario" width="220"></td>
+    <td><img src="images/钉钉.jpg" alt="DingTalk location test scenario" width="220"></td>
+    <td><img src="images/高血压.jpg" alt="Apple Watch region-feature test scenario" width="220"></td>
+  </tr>
+</table>
+
+## Acknowledgements and Links
+
+The core location-response handling approach, Go implementation, and third-party modules are based on:
+
+- [Yu9191/wloc](https://github.com/Yu9191/wloc)
+
+Community link:
+
+- [LINUX DO](https://linux.do/)
+
+Thanks to the open-source contributors working on iOS location-service research, network proxies, and mobile testing
+tools.
