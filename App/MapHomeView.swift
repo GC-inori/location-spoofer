@@ -431,8 +431,8 @@ struct MapHomeView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(mapState.displayName ?? "当前选点").font(.subheadline.weight(.semibold)).lineLimit(1)
-                    coordinateRow(label: "国内标准 GCJ-02", system: .gcj02)
-                    coordinateRow(label: "国际标准 WGS-84", system: .wgs84)
+                    coordinateRow(label: "GCJ-02(国内)", system: .gcj02)
+                    coordinateRow(label: "WGS-84(国际)", system: .wgs84)
                 }
                 Spacer()
                 // 帮助说明按钮
@@ -768,11 +768,15 @@ struct MapHomeView: View {
             Text(label)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 112, alignment: .leading)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             Text(text)
                 .font(.caption.monospaced())
                 .foregroundStyle(copiedCoordinateSystem == system ? .green : .secondary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .allowsTightening(true)
+                .layoutPriority(1)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -1296,7 +1300,7 @@ struct MapHomeView: View {
         mapState.focusSelection(distanceMeters: currentViewport)
         // Persist both forms once from the explicitly typed input boundary.
         LastCoordinateStore.save(coordinatePair: pair, zoomMeters: currentViewport)
-        favorites.select(nil)
+        favorites.selectMatching(coordinatePair: pair)
         scheduleGeocode(pair: pair, revision: mapState.selection.revision)
     }
 

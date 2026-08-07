@@ -19,6 +19,39 @@ final class FavoriteLocationStoreTests: XCTestCase {
         XCTAssertEqual(FavoriteLocationStore(defaults: defaults).selectedFavorite?.name, "深圳湾")
     }
 
+    func testSelectingMatchingCoordinatePairRestoresFavoriteSelection() {
+        let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = FavoriteLocationStore(defaults: defaults)
+        let favorite = store.save(
+            name: "深圳湾",
+            coordinatePair: CoordinateConverter.coordinatePair(
+                lat: 22.491_438,
+                lon: 113.945_702,
+                mapCoordinateSystem: .wgs84
+            ),
+            accuracy: 20
+        )
+        store.select(nil)
+
+        let nearbyRealtimePair = CoordinateConverter.coordinatePair(
+            lat: 22.491_488,
+            lon: 113.945_752,
+            mapCoordinateSystem: .wgs84
+        )
+        XCTAssertEqual(store.selectMatching(coordinatePair: nearbyRealtimePair)?.id, favorite.id)
+        XCTAssertEqual(store.selectedFavoriteID, favorite.id)
+
+        let unrelatedPair = CoordinateConverter.coordinatePair(
+            lat: 31.2304,
+            lon: 121.4737,
+            mapCoordinateSystem: .wgs84
+        )
+        XCTAssertNil(store.selectMatching(coordinatePair: unrelatedPair))
+        XCTAssertNil(store.selectedFavoriteID)
+    }
+
     func testFavoriteStoresBothFormsAndSelectsMatchingPairWithoutReadConversion() {
         let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

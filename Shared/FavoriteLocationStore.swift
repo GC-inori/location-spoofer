@@ -160,6 +160,18 @@ final class FavoriteLocationStore: ObservableObject {
         defaults.set(id?.uuidString, forKey: Keys.selectedID)
     }
 
+    @discardableResult
+    func selectMatching(coordinatePair: CoordinatePair) -> FavoriteLocation? {
+        let matchingFavorite = favorites.first {
+            $0.coordinatePair.matchesWGS84(
+                latitude: coordinatePair.wgs84.latitude,
+                longitude: coordinatePair.wgs84.longitude
+            )
+        }
+        select(matchingFavorite?.id)
+        return matchingFavorite
+    }
+
     func rename(_ id: UUID, to name: String) {
         guard let idx = favorites.firstIndex(where: { $0.id == id }) else { return }
         favorites[idx].name = name
