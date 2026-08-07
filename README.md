@@ -101,7 +101,6 @@
 | 组件 | 标识 |
 |---|---|
 | 主 App Bundle ID | `com.paopaolabs.location-spoofer` |
-| App Group | `group.com.paopaolabs.location-spoofer` |
 
 免费 Apple ID 签名通常只有 7 天有效期，到期后需要重新签名安装；这是 Apple 的侧载限制，不是 App 的证书失效。App 生成的 WLOC CA 私钥保存在 iOS 钥匙串中：使用相同 Bundle ID 和钥匙串访问范围重装时通常可继续复用，但卸载、系统清理或签名能力变化后不保证保留。
 
