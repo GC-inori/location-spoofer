@@ -46,6 +46,7 @@ private enum RealtimeCoordinateSource: Equatable {
 }
 
 struct MapHomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var setup: SetupCoordinator
     @StateObject private var favorites: FavoriteLocationStore
     @StateObject private var actions = LocationActionCoordinator()
@@ -87,6 +88,10 @@ struct MapHomeView: View {
     @State private var activeSpoofLon: Double?
     @State private var lastSpoofDiagnosisSystem: CoordinateConverter.MapCoordinateSystem?
     @State private var hasLoggedSpoofDiagnosis = false
+    @State private var coordinateSystemRefreshTask: Task<Void, Never>?
+    @State private var coordinateSystemRefreshTaskID: UUID?
+    @State private var coordinateSystemRefreshAttempts = 0
+    @State private var lastCoordinateSystemRefreshAt: Date?
 
     init(setup: SetupCoordinator) {
         self.setup = setup
@@ -279,11 +284,19 @@ struct MapHomeView: View {
             wifiVerificationTask?.cancel()
             wifiVerificationTask = nil
             wifiVerificationID = nil
+            resetMapCoordinateSystemRefresh()
+        }
+        .onChange(of: scenePhase) { phase in
+            guard phase == .active else { return }
+            resetMapCoordinateSystemRefresh()
+            refreshMapCoordinateSystemAfterLocationEnvironmentChange(trigger: "App回到前台")
         }
         .onChange(of: proxy.isRunning) { running in
             if runtimeMode.mode == .localWiFi, !running && spoofState == .active {
                 spoofState = .idle
                 actions.clear()
+                resetMapCoordinateSystemRefresh()
+                refreshMapCoordinateSystemAfterLocationEnvironmentChange(trigger: "本机代理意外停止")
             }
         }
         .onChange(of: runtimeMode.mode) { mode in
@@ -296,6 +309,7 @@ struct MapHomeView: View {
             }
             wifiVerificationTask?.cancel()
             wifiVerificationTask = nil
+            resetMapCoordinateSystemRefresh()
             activeSpoofLat = nil
             activeSpoofLon = nil
             if mode == .localWiFi {
@@ -602,6 +616,7 @@ struct MapHomeView: View {
                     spoofState = .active
                     activeSpoofLat = response.latitude
                     activeSpoofLon = response.longitude
+                    resetMapCoordinateSystemRefresh()
                     RuntimeLogger.info("APP", "定位", "第三方代理坐标同步成功", details: [
                         "坐标标准": "WGS-84",
                         "客户端模式": "测试模式",
@@ -640,6 +655,7 @@ struct MapHomeView: View {
                     activeSpoofLon = target.longitude
                     lastSpoofDiagnosisSystem = nil
                     hasLoggedSpoofDiagnosis = false
+                    resetMapCoordinateSystemRefresh()
                 }
                 RuntimeLogger.info("APP", "定位", "验证结果", details: [
                     "success": "true",
@@ -679,6 +695,8 @@ struct MapHomeView: View {
                     spoofState = .idle
                     activeSpoofLat = nil
                     activeSpoofLon = nil
+                    resetMapCoordinateSystemRefresh()
+                    refreshMapCoordinateSystemAfterLocationEnvironmentChange(trigger: "第三方虚拟定位已停用")
                     presentSuccessfulOperationTip(.deactivation)
                 } catch {
                     spoofState = .active
@@ -695,6 +713,8 @@ struct MapHomeView: View {
         activeSpoofLon = nil
         lastSpoofDiagnosisSystem = nil
         hasLoggedSpoofDiagnosis = false
+        resetMapCoordinateSystemRefresh()
+        refreshMapCoordinateSystemAfterLocationEnvironmentChange(trigger: "APP虚拟定位已停用")
         presentSuccessfulOperationTip(.deactivation)
     }
 
@@ -985,12 +1005,17 @@ struct MapHomeView: View {
             lon: longitude,
             mapCoordinateSystem: .wgs84
         )
+        let maximumTargetDistance = max(1_000, location.horizontalAccuracy * 4)
         let diagnosis = CoordinateConverter.diagnoseRepresentation(
             sample: location.coordinate,
             pair: targetPair,
-            maximumDistance: max(1_000, location.horizontalAccuracy * 4),
+            maximumDistance: maximumTargetDistance,
             minimumSeparation: max(30, location.horizontalAccuracy)
         )
+        let nearestTargetDistance = min(diagnosis.distanceToWGS84, diagnosis.distanceToGCJ02)
+        if nearestTargetDistance <= maximumTargetDistance {
+            refreshMapCoordinateSystemAfterLocationEnvironmentChange(trigger: "虚拟定位蓝点已到达目标")
+        }
         let shouldLog = !hasLoggedSpoofDiagnosis
             || diagnosis.inferredSystem != lastSpoofDiagnosisSystem
         guard shouldLog else { return }
@@ -1002,8 +1027,50 @@ struct MapHomeView: View {
             "蓝点回调更接近": diagnosis.inferredName,
             "蓝点距WGS目标米": String(format: "%.1f", diagnosis.distanceToWGS84),
             "蓝点距GCJ目标米": String(format: "%.1f", diagnosis.distanceToGCJ02),
+            "蓝点已到达目标": String(nearestTargetDistance <= maximumTargetDistance),
             "日志策略": "每次开启首次或判定变化"
         ])
+    }
+
+    private func resetMapCoordinateSystemRefresh() {
+        coordinateSystemRefreshTask?.cancel()
+        coordinateSystemRefreshTask = nil
+        coordinateSystemRefreshTaskID = nil
+        coordinateSystemRefreshAttempts = 0
+        lastCoordinateSystemRefreshAt = nil
+    }
+
+    private func refreshMapCoordinateSystemAfterLocationEnvironmentChange(trigger: String) {
+        guard coordinateSystemRefreshTask == nil,
+              coordinateSystemRefreshAttempts < 3 else { return }
+        if let lastCoordinateSystemRefreshAt,
+           Date().timeIntervalSince(lastCoordinateSystemRefreshAt) < 2 {
+            return
+        }
+        coordinateSystemRefreshAttempts += 1
+        lastCoordinateSystemRefreshAt = Date()
+        let attempt = coordinateSystemRefreshAttempts
+        let taskID = UUID()
+        coordinateSystemRefreshTaskID = taskID
+        coordinateSystemRefreshTask = Task { @MainActor in
+            defer {
+                if coordinateSystemRefreshTaskID == taskID {
+                    coordinateSystemRefreshTask = nil
+                    coordinateSystemRefreshTaskID = nil
+                }
+            }
+            let change = await CoordinateConverter.refreshMapCoordinateSystem()
+            guard !Task.isCancelled, coordinateSystemRefreshTaskID == taskID else { return }
+            if let change {
+                reprojectMapSelection(for: change)
+            }
+            RuntimeLogger.info("APP", "坐标转换", "运行期地图坐标标准刷新请求结束", details: [
+                "触发": trigger,
+                "尝试": String(attempt),
+                "发生切换": String(change != nil),
+                "当前标准": CoordinateConverter.currentMapCoordinateSystem.rawValue
+            ])
+        }
     }
 
     private func startRealtimeLocationRequest(

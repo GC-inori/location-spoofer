@@ -65,6 +65,12 @@ if grep -q 'logEvent("CONNECT " + host + " -> passthrough")' "$ROOT/Core/proxy.g
 fi
 grep -q 'enum SystemSettingsNavigator' "$SETTINGS_NAVIGATOR" || fail "shared settings navigator is missing"
 grep -q 'await CoordinateConverter.resolveInitialMapCoordinateSystem()' "$CONTENT" || fail "map type must resolve before MapHomeView construction"
+grep -q 'static func refreshMapCoordinateSystem() async' "$CONVERTER" || fail "runtime MapKit coordinate-system changes must reuse the fixed-anchor probe"
+grep -q 'fixedAnchorCoordinateSystemProbe()' "$CONVERTER" || fail "runtime coordinate-system refresh must use the location-independent fixed anchor"
+test "$(grep -c 'initialMapCoordinateSystemUsedFallback = false' "$CONVERTER")" -ge 2 || fail "a successful runtime anchor probe must disable location-region fallback correction"
+grep -q 'refreshMapCoordinateSystemAfterLocationEnvironmentChange' "$MAP_HOME" || fail "MapHomeView must refresh the coordinate system after spoofing changes the location environment"
+grep -q 'nearestTargetDistance' "$MAP_HOME" || fail "spoof refresh must wait until the MapKit blue point reaches the active target"
+grep -q 'reprojectMapSelection(for: change)' "$MAP_HOME" || fail "coordinate-system refresh must replay the persisted coordinate pair"
 grep -q 'phase = .map' "$CONTENT" || fail "ContentView must explicitly gate MapHomeView construction"
 ! grep -q 'startTileProbe' "$MAP_HOME" || fail "MapHomeView must not start a second fixed-anchor coordinate-system probe"
 ! grep -q 'initializeMap()' "$MAP_HOME" || fail "MapHomeView must not replay a second map initialization from onAppear"

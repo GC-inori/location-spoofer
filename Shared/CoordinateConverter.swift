@@ -110,7 +110,7 @@ enum CoordinateConverter {
         let nextType: MapCoordinateSystem
         switch await fixedAnchorCoordinateSystemProbe() {
         case let .response(name, count):
-            nextType = name == "林士街" ? .gcj02 : .wgs84
+            nextType = mapCoordinateSystem(anchorName: name)
             initialMapCoordinateSystemUsedFallback = false
             RuntimeLogger.info("APP", "坐标转换", "地图坐标标准检测获得明确结果", details: [
                 "首条名称": name,
@@ -146,13 +146,73 @@ enum CoordinateConverter {
             return currentMapCoordinateSystem
         }
 
-        currentMapCoordinateSystem = nextType
+        _ = applyDetectedMapCoordinateSystem(nextType)
         RuntimeLogger.info("APP", "坐标转换", "地图坐标标准已确定，允许创建地图", details: [
             "最终标准": nextType.rawValue,
             "使用兜底": String(initialMapCoordinateSystemUsedFallback),
             "缓存": "false"
         ])
         return nextType
+    }
+
+    /// Re-runs the same location-independent fixed-anchor probe after a
+    /// spoofing environment change. Runtime callers must never infer MapKit's
+    /// representation from the geographic region of the current location: that
+    /// sample may itself already be virtual.
+    @MainActor
+    static func refreshMapCoordinateSystem() async -> MapCoordinateSystemChange? {
+        guard !mapCoordinateSystemCheckPending else {
+            RuntimeLogger.info("APP", "坐标转换", "运行期地图坐标标准刷新已在进行中")
+            return nil
+        }
+        mapCoordinateSystemCheckPending = true
+        defer { mapCoordinateSystemCheckPending = false }
+
+        RuntimeLogger.info("APP", "坐标转换", "运行期地图坐标标准刷新开始", details: [
+            "当前标准": currentMapCoordinateSystem.rawValue,
+            "锚点": "22.283819,114.158439"
+        ])
+        switch await fixedAnchorCoordinateSystemProbe() {
+        case let .response(name, count):
+            let detected = mapCoordinateSystem(anchorName: name)
+            initialMapCoordinateSystemUsedFallback = false
+            let change = applyDetectedMapCoordinateSystem(detected)
+            RuntimeLogger.info("APP", "坐标转换", "运行期地图坐标标准刷新完成", details: [
+                "首条名称": name,
+                "结果数": String(count),
+                "探测标准": detected.rawValue,
+                "发生切换": String(change != nil)
+            ])
+            return change
+        case .unavailable(let reason), .timedOut(let reason):
+            RuntimeLogger.warning("APP", "坐标转换", "运行期地图坐标标准刷新不可用，保留当前标准", details: [
+                "原因": reason,
+                "当前标准": currentMapCoordinateSystem.rawValue
+            ])
+            return nil
+        case .cancelled:
+            RuntimeLogger.info("APP", "坐标转换", "运行期地图坐标标准刷新被取消，保留当前标准", details: [
+                "当前标准": currentMapCoordinateSystem.rawValue
+            ])
+            return nil
+        }
+    }
+
+    /// Applies a coordinate system that was resolved by the fixed-anchor
+    /// probe. Kept as a small deterministic seam for regression tests.
+    @MainActor
+    static func applyDetectedMapCoordinateSystem(_ detected: MapCoordinateSystem) -> MapCoordinateSystemChange? {
+        guard detected != currentMapCoordinateSystem else { return nil }
+        let change = MapCoordinateSystemChange(
+            previous: currentMapCoordinateSystem,
+            current: detected
+        )
+        currentMapCoordinateSystem = detected
+        return change
+    }
+
+    private static func mapCoordinateSystem(anchorName: String) -> MapCoordinateSystem {
+        anchorName == "林士街" ? .gcj02 : .wgs84
     }
 
     /// A user-requested realtime sample is WGS-84 and can correct a provisional
@@ -167,14 +227,12 @@ enum CoordinateConverter {
             return nil
         }
         let next: MapCoordinateSystem = usesGCJ02ServiceArea(lat: coordinate.latitude, lon: coordinate.longitude) ? .gcj02 : .wgs84
-        guard next != currentMapCoordinateSystem else {
+        guard let change = applyDetectedMapCoordinateSystem(next) else {
             RuntimeLogger.info("APP", "坐标转换", "实时定位确认兜底地图坐标标准无需修正", details: [
                 "当前标准": currentMapCoordinateSystem.rawValue
             ])
             return nil
         }
-        let change = MapCoordinateSystemChange(previous: currentMapCoordinateSystem, current: next)
-        currentMapCoordinateSystem = next
         RuntimeLogger.warning("APP", "坐标转换", "实时定位修正启动兜底地图坐标标准", details: [
             "from": change.previous.rawValue,
             "to": change.current.rawValue

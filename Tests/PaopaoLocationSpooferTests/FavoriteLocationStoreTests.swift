@@ -122,6 +122,43 @@ final class FavoriteLocationStoreTests: XCTestCase {
         XCTAssertNil(CoordinateConverter.diagnoseRepresentation(sample: unrelated, pair: pair).inferredSystem)
     }
 
+    @MainActor
+    func testDetectedMapCoordinateSystemChangePreventsHongKongWGS84DoubleConversion() {
+        let original = CoordinateConverter.currentMapCoordinateSystem
+        defer { _ = CoordinateConverter.applyDetectedMapCoordinateSystem(original) }
+        _ = CoordinateConverter.applyDetectedMapCoordinateSystem(.gcj02)
+
+        let hongKongObservatory = CLLocationCoordinate2D(
+            latitude: 22.302_344,
+            longitude: 114.174_566
+        )
+        let stalePair = CoordinatePair(
+            mapCoordinate: hongKongObservatory,
+            mapCoordinateSystem: CoordinateConverter.currentMapCoordinateSystem
+        )
+
+        let change = CoordinateConverter.applyDetectedMapCoordinateSystem(.wgs84)
+        let pair = CoordinatePair(
+            mapCoordinate: hongKongObservatory,
+            mapCoordinateSystem: CoordinateConverter.currentMapCoordinateSystem
+        )
+
+        XCTAssertEqual(change?.previous, .gcj02)
+        XCTAssertEqual(change?.current, .wgs84)
+        XCTAssertNotEqual(stalePair.wgs84.longitude, hongKongObservatory.longitude)
+        XCTAssertEqual(pair.wgs84.latitude, hongKongObservatory.latitude, accuracy: 0.000_000_1)
+        XCTAssertEqual(pair.wgs84.longitude, hongKongObservatory.longitude, accuracy: 0.000_000_1)
+    }
+
+    @MainActor
+    func testApplyingSameDetectedMapCoordinateSystemDoesNotReportAChange() {
+        let original = CoordinateConverter.currentMapCoordinateSystem
+        defer { _ = CoordinateConverter.applyDetectedMapCoordinateSystem(original) }
+        _ = CoordinateConverter.applyDetectedMapCoordinateSystem(.gcj02)
+
+        XCTAssertNil(CoordinateConverter.applyDetectedMapCoordinateSystem(.gcj02))
+    }
+
     func testMapConfigurationNeverRequestsRealUserLocation() {
         XCTAssertFalse(MapConfiguration.default.showsUserLocation)
         XCTAssertFalse(MapConfiguration.default.allowsCurrentLocationRequest)
