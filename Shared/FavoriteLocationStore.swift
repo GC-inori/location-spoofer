@@ -116,11 +116,24 @@ final class FavoriteLocationStore: ObservableObject {
         mapCoordinateSystem: CoordinateConverter.MapCoordinateSystem,
         accuracy: Int
     ) -> FavoriteLocation {
-        let favorite = FavoriteLocation(
-            name: name,
-            coordinatePair: .init(mapCoordinate: mapCoordinate, mapCoordinateSystem: mapCoordinateSystem),
-            accuracy: accuracy
+        save(
+            FavoriteLocation(
+                name: name,
+                coordinatePair: .init(mapCoordinate: mapCoordinate, mapCoordinateSystem: mapCoordinateSystem),
+                accuracy: accuracy
+            )
         )
+    }
+
+    /// Saves a coordinate pair whose source representation was already typed
+    /// before an asynchronous map-coordinate-system refresh.
+    @discardableResult
+    func save(name: String, coordinatePair: CoordinatePair, accuracy: Int) -> FavoriteLocation {
+        save(FavoriteLocation(name: name, coordinatePair: coordinatePair, accuracy: accuracy))
+    }
+
+    @discardableResult
+    private func save(_ favorite: FavoriteLocation) -> FavoriteLocation {
         favorites.removeAll {
             abs($0.coordinatePair.wgs84.latitude - favorite.coordinatePair.wgs84.latitude) < 0.000001
                 && abs($0.coordinatePair.wgs84.longitude - favorite.coordinatePair.wgs84.longitude) < 0.000001

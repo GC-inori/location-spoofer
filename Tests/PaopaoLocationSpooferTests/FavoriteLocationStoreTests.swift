@@ -36,6 +36,25 @@ final class FavoriteLocationStoreTests: XCTestCase {
         XCTAssertNotEqual(favorite.coordinatePair.gcj02.longitude, wgs.longitude)
     }
 
+    func testSavingPrecomputedPairDoesNotReinterpretItAfterMapTypeRefresh() {
+        let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pair = CoordinateConverter.coordinatePair(
+            lat: 22.296_642,
+            lon: 114.172_175,
+            mapCoordinateSystem: .wgs84
+        )
+
+        let favorite = FavoriteLocationStore(defaults: defaults).save(
+            name: "香港天文台",
+            coordinatePair: pair,
+            accuracy: 25
+        )
+
+        XCTAssertEqual(favorite.coordinatePair, pair)
+    }
+
     func testLegacyFavoriteIsUpgradedAsDomesticGCJAndRewritten() throws {
         let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -122,41 +141,15 @@ final class FavoriteLocationStoreTests: XCTestCase {
         XCTAssertNil(CoordinateConverter.diagnoseRepresentation(sample: unrelated, pair: pair).inferredSystem)
     }
 
-    @MainActor
-    func testDetectedMapCoordinateSystemChangePreventsHongKongWGS84DoubleConversion() {
-        let original = CoordinateConverter.currentMapCoordinateSystem
-        defer { _ = CoordinateConverter.applyDetectedMapCoordinateSystem(original) }
-        _ = CoordinateConverter.applyDetectedMapCoordinateSystem(.gcj02)
-
-        let hongKongObservatory = CLLocationCoordinate2D(
-            latitude: 22.302_344,
-            longitude: 114.174_566
+    func testFixedAnchorResultNameUsesOneSharedMapTypeRule() {
+        XCTAssertEqual(
+            CoordinateConverter.mapCoordinateSystem(forFixedAnchorFirstResultName: "林士街"),
+            .gcj02
         )
-        let stalePair = CoordinatePair(
-            mapCoordinate: hongKongObservatory,
-            mapCoordinateSystem: CoordinateConverter.currentMapCoordinateSystem
+        XCTAssertEqual(
+            CoordinateConverter.mapCoordinateSystem(forFixedAnchorFirstResultName: "Connaught Road West"),
+            .wgs84
         )
-
-        let change = CoordinateConverter.applyDetectedMapCoordinateSystem(.wgs84)
-        let pair = CoordinatePair(
-            mapCoordinate: hongKongObservatory,
-            mapCoordinateSystem: CoordinateConverter.currentMapCoordinateSystem
-        )
-
-        XCTAssertEqual(change?.previous, .gcj02)
-        XCTAssertEqual(change?.current, .wgs84)
-        XCTAssertNotEqual(stalePair.wgs84.longitude, hongKongObservatory.longitude)
-        XCTAssertEqual(pair.wgs84.latitude, hongKongObservatory.latitude, accuracy: 0.000_000_1)
-        XCTAssertEqual(pair.wgs84.longitude, hongKongObservatory.longitude, accuracy: 0.000_000_1)
-    }
-
-    @MainActor
-    func testApplyingSameDetectedMapCoordinateSystemDoesNotReportAChange() {
-        let original = CoordinateConverter.currentMapCoordinateSystem
-        defer { _ = CoordinateConverter.applyDetectedMapCoordinateSystem(original) }
-        _ = CoordinateConverter.applyDetectedMapCoordinateSystem(.gcj02)
-
-        XCTAssertNil(CoordinateConverter.applyDetectedMapCoordinateSystem(.gcj02))
     }
 
     func testMapConfigurationNeverRequestsRealUserLocation() {

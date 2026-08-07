@@ -222,6 +222,13 @@ final class MapLocationState: ObservableObject {
         if coordinate == nil { realtimeLocation = nil }
     }
 
+    /// Discards a blue-point sample represented in a superseded MapKit
+    /// coordinate system. The next native callback repopulates the cache.
+    func clearRealtimeLocationForMapCoordinateSystemChange() {
+        realtimeLocation = nil
+        realtimeCoordinate = nil
+    }
+
     func updateExplicitName(_ name: String, forFavoriteID favoriteID: UUID) {
         guard selection.source == .favorite(favoriteID) else { return }
         selection = MapSelection(
