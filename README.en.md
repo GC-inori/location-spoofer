@@ -65,10 +65,18 @@ Unlike tools that require a computer to stay connected, developer debugging, or 
 
 ### 1. Install the App
 
-- Download a build from [Releases](https://github.com/xweiba/location-spoofer/releases) and self-sign; or
-- Build from source on macOS with Xcode — see the [build guide](docs/BUILD.md).
+Release assets are unsigned IPA files and must be installed with a sideloading tool:
 
-The release asset is an unsigned IPA. Sign it with [Impact](https://github.com/claration/Impactor) before installation. Keep the app Bundle ID `com.paopaolabs.location-spoofer`, the App Group `group.com.paopaolabs.location-spoofer`, and the declared entitlements unchanged. A free Apple ID signature normally expires after seven days and must then be renewed; this is separate from the WLOC CA certificate.
+1. **Enable sideloading support**: On iOS 16 or later, open Settings → Privacy & Security → Developer Mode, enable it, then restart and confirm when prompted. iOS 15 does not have this switch, so skip this step there.
+2. **Download the IPA**: Open this project's [Releases](https://github.com/xweiba/location-spoofer/releases) and download the latest `PaopaoLocationSpoofer-unsigned.ipa`.
+3. **Prepare a sideloading tool**: Download the appropriate Impact build from [Impact Releases](https://github.com/claration/Impactor/releases/latest). Aisi Assistant/i4Tools or another tool that supports signing and installing IPA files may also be used.
+4. **Connect and install**: Connect the iPhone to the computer with a USB cable, tap “Trust This Computer” on the phone, select the downloaded IPA in the sideloading tool, and follow that tool's prompts to sign and install it.
+
+> Impact supports Windows, macOS, and Linux. If Windows cannot detect the device, install iTunes to provide the Apple device drivers. Aisi Assistant/i4Tools is third-party software; download it only from its official source and assess its account, certificate, and privacy risks yourself.
+
+If iOS blocks the installed app, trust its developer app under Settings → General → VPN & Device Management. A free Apple ID signature normally expires after seven days and must then be renewed; this is separate from the WLOC CA certificate. Keep the app Bundle ID `com.paopaolabs.location-spoofer`, the App Group `group.com.paopaolabs.location-spoofer`, and the declared entitlements unchanged.
+
+To build the unsigned IPA yourself on macOS with Xcode, follow the [build guide](docs/BUILD.md), then use the same sideloading steps above to sign and install it.
 
 ### 2. Choose a Runtime Mode
 

@@ -84,12 +84,20 @@
 
 ### 1. 安装 App
 
-- 从 [Releases](https://github.com/xweiba/location-spoofer/releases) 获取构建产物并自行签名；或
-- 在 macOS + Xcode 环境按[构建说明](docs/BUILD.md)编译。
-
 #### 自签安装
 
-免费 Apple ID 可用于侧载，无需付费开发者账号。本项目自身不包含 VPN、Network Extension 或 Packet Tunnel Provider，但签名工具仍需保留 App 的标识和声明能力。
+Release 附件是未签名 IPA，需要使用自签工具安装到 iPhone：
+
+1. **开启自签支持**：iOS 16 及以上版本前往“设置 → 隐私与安全性 → 开发者模式”，开启后按系统提示重启并确认；iOS 15 没有此开关，可跳过本步。
+2. **下载 IPA**：前往本项目的 [Releases](https://github.com/xweiba/location-spoofer/releases)，下载最新的 `PaopaoLocationSpoofer-unsigned.ipa`。
+3. **准备自签软件**：前往 [Impact Releases](https://github.com/claration/Impactor/releases/latest) 下载对应系统版本的 Impact；也可以使用爱思助手等支持 IPA 自签安装的软件。
+4. **连接并安装**：使用 USB 数据线连接 iPhone 与电脑，在手机上选择“信任此电脑”，然后在自签软件中选择刚下载的 IPA，根据软件提示完成签名与安装。
+
+> Impact 支持 Windows、macOS 和 Linux；Windows 若无法识别设备，请先安装 iTunes 提供 Apple 设备驱动。爱思助手属于第三方软件，请从其官方渠道获取，并自行评估账号、证书和隐私风险。
+
+安装完成后，若 iOS 阻止打开 App，请前往“设置 → 通用 → VPN 与设备管理”信任对应的开发者 App。免费 Apple ID 自签通常只有 7 天有效期，到期后需要重新签名安装。
+
+本项目自身不包含 VPN、Network Extension 或 Packet Tunnel Provider，但签名工具仍需保留 App 的标识和声明能力。
 
 需要自行构建时执行：
 
@@ -97,7 +105,7 @@
 ./build.sh
 ```
 
-输出文件为 `dist/PaopaoLocationSpoofer-unsigned.ipa`。也可以直接下载 Release 附带的未签名 IPA，然后使用 [Impact](https://github.com/claration/Impactor) 签名并安装到设备。
+输出文件为 `dist/PaopaoLocationSpoofer-unsigned.ipa`，随后按上面的自签步骤安装到设备。完整构建要求见[构建说明](docs/BUILD.md)。
 
 签名时不要修改以下标识，也不要移除 App Group 和 Wi-Fi 信息能力：
 
@@ -105,7 +113,7 @@
 |---|---|
 | 主 App Bundle ID | `com.paopaolabs.location-spoofer` |
 
-免费 Apple ID 签名通常只有 7 天有效期，到期后需要重新签名安装；这是 Apple 的侧载限制，不是 WLOC CA 失效。CA 私钥保存在 iOS 钥匙串中：相同 Bundle ID 和钥匙串访问范围下重装通常可以复用，但卸载、系统清理或签名能力变化后不保证保留。
+签名有效期是 Apple 的侧载限制，不是 WLOC CA 失效。CA 私钥保存在 iOS 钥匙串中：相同 Bundle ID 和钥匙串访问范围下重装通常可以复用，但卸载、系统清理或签名能力变化后不保证保留。
 
 ### 2. 选择运行模式
 
