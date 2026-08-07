@@ -85,6 +85,13 @@ enum CoordinateConverter {
         let current: MapCoordinateSystem
     }
 
+    enum RuntimeMapCoordinateSystemRefreshResult: Equatable {
+        case unchanged(MapCoordinateSystem)
+        case changed(MapCoordinateSystemChange)
+        case unavailable(reason: String)
+        case cancelled
+    }
+
     /// 当前 Apple 地图坐标标准。检测不可用时使用国内 GCJ-02 作为兜底。
     @MainActor static var currentMapCoordinateSystem = MapCoordinateSystem.gcj02
     @MainActor private static var mapCoordinateSystemCheckPending = false
@@ -110,7 +117,7 @@ enum CoordinateConverter {
         let nextType: MapCoordinateSystem
         switch await fixedAnchorCoordinateSystemProbe() {
         case let .response(name, count):
-            nextType = name == "林士街" ? .gcj02 : .wgs84
+            nextType = mapCoordinateSystem(forFixedAnchorFirstResultName: name)
             initialMapCoordinateSystemUsedFallback = false
             RuntimeLogger.info("APP", "坐标转换", "地图坐标标准检测获得明确结果", details: [
                 "首条名称": name,
@@ -153,6 +160,72 @@ enum CoordinateConverter {
             "缓存": "false"
         ])
         return nextType
+    }
+
+    /// Re-runs the fixed-anchor MapKit behavior probe while the map is alive.
+    /// Runtime failures preserve the last confirmed type: a potentially spoofed
+    /// Core Location sample is not authoritative for MapKit's representation.
+    @MainActor
+    static func refreshRuntimeMapCoordinateSystem(reason: String) async -> RuntimeMapCoordinateSystemRefreshResult {
+        guard !mapCoordinateSystemCheckPending else {
+            RuntimeLogger.info("APP", "坐标转换", "地图坐标标准运行期检测合并到进行中请求", details: [
+                "触发原因": reason,
+                "当前标准": currentMapCoordinateSystem.rawValue
+            ])
+            return .unchanged(currentMapCoordinateSystem)
+        }
+        mapCoordinateSystemCheckPending = true
+        defer { mapCoordinateSystemCheckPending = false }
+
+        let previous = currentMapCoordinateSystem
+        RuntimeLogger.info("APP", "坐标转换", "地图坐标标准运行期检测开始", details: [
+            "触发原因": reason,
+            "检测前标准": previous.rawValue,
+            "锚点": "22.283819,114.158439",
+            "缓存": "false"
+        ])
+
+        switch await fixedAnchorCoordinateSystemProbe() {
+        case let .response(name, count):
+            let detected = mapCoordinateSystem(forFixedAnchorFirstResultName: name)
+            initialMapCoordinateSystemUsedFallback = false
+            guard detected != previous else {
+                RuntimeLogger.info("APP", "坐标转换", "地图坐标标准运行期检测完成，标准未变化", details: [
+                    "触发原因": reason,
+                    "首条名称": name,
+                    "结果数": String(count),
+                    "确认标准": detected.rawValue
+                ])
+                return .unchanged(detected)
+            }
+            let change = MapCoordinateSystemChange(previous: previous, current: detected)
+            currentMapCoordinateSystem = detected
+            RuntimeLogger.warning("APP", "坐标转换", "地图坐标标准运行期检测发现切换", details: [
+                "触发原因": reason,
+                "首条名称": name,
+                "结果数": String(count),
+                "from": previous.rawValue,
+                "to": detected.rawValue
+            ])
+            return .changed(change)
+        case .unavailable(let failureReason), .timedOut(let failureReason):
+            RuntimeLogger.warning("APP", "坐标转换", "地图坐标标准运行期检测失败，保留当前标准", details: [
+                "触发原因": reason,
+                "原因": failureReason,
+                "保留标准": previous.rawValue
+            ])
+            return .unavailable(reason: failureReason)
+        case .cancelled:
+            RuntimeLogger.info("APP", "坐标转换", "地图坐标标准运行期检测已取消", details: [
+                "触发原因": reason,
+                "保留标准": previous.rawValue
+            ])
+            return .cancelled
+        }
+    }
+
+    static func mapCoordinateSystem(forFixedAnchorFirstResultName name: String) -> MapCoordinateSystem {
+        name == "林士街" ? .gcj02 : .wgs84
     }
 
     /// A user-requested realtime sample is WGS-84 and can correct a provisional

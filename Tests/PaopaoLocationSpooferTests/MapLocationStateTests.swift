@@ -173,6 +173,19 @@ final class MapLocationStateTests: XCTestCase {
         XCTAssertEqual(state.selection.source, .search)
     }
 
+    func testMapCoordinateSystemChangeClearsSupersededRealtimeSampleWithoutMovingSelection() {
+        let state = MapLocationState(initialCoordinate: initial)
+        state.selectSearchResult(.init(latitude: 31.23, longitude: 121.47), name: "外滩")
+        let selection = state.selection
+        state.updateRealtimeLocation(CLLocation(latitude: 30.42, longitude: 114.25))
+
+        state.clearRealtimeLocationForMapCoordinateSystemChange()
+
+        XCTAssertNil(state.realtimeLocation)
+        XCTAssertNil(state.realtimeCoordinate)
+        XCTAssertEqual(state.selection, selection)
+    }
+
     func testRealtimeIntentCanImmediatelyAcceptNativeLocation() {
         let state = MapLocationState(initialCoordinate: initial)
         let nativeLocation = CLLocation(latitude: 30.42, longitude: 114.25)

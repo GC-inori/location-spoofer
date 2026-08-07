@@ -36,6 +36,25 @@ final class FavoriteLocationStoreTests: XCTestCase {
         XCTAssertNotEqual(favorite.coordinatePair.gcj02.longitude, wgs.longitude)
     }
 
+    func testSavingPrecomputedPairDoesNotReinterpretItAfterMapTypeRefresh() {
+        let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pair = CoordinateConverter.coordinatePair(
+            lat: 22.296_642,
+            lon: 114.172_175,
+            mapCoordinateSystem: .wgs84
+        )
+
+        let favorite = FavoriteLocationStore(defaults: defaults).save(
+            name: "香港天文台",
+            coordinatePair: pair,
+            accuracy: 25
+        )
+
+        XCTAssertEqual(favorite.coordinatePair, pair)
+    }
+
     func testLegacyFavoriteIsUpgradedAsDomesticGCJAndRewritten() throws {
         let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -120,6 +139,17 @@ final class FavoriteLocationStoreTests: XCTestCase {
         let unrelated = CLLocationCoordinate2D(latitude: 31.2304, longitude: 121.4737)
 
         XCTAssertNil(CoordinateConverter.diagnoseRepresentation(sample: unrelated, pair: pair).inferredSystem)
+    }
+
+    func testFixedAnchorResultNameUsesOneSharedMapTypeRule() {
+        XCTAssertEqual(
+            CoordinateConverter.mapCoordinateSystem(forFixedAnchorFirstResultName: "林士街"),
+            .gcj02
+        )
+        XCTAssertEqual(
+            CoordinateConverter.mapCoordinateSystem(forFixedAnchorFirstResultName: "Connaught Road West"),
+            .wgs84
+        )
     }
 
     func testMapConfigurationNeverRequestsRealUserLocation() {
