@@ -159,14 +159,16 @@ WLOC 配置接口
 
 当前客户端状态：
 
-| 客户端 | 状态 |
-|---|---|
-| Shadowrocket | 当前用于真机测试 |
-| Surge | 已提供配置，尚未完整验证 |
-| Quantumult X | 已提供配置，尚未完整验证 |
-| Loon | 已提供配置，尚未完整验证 |
-| Stash | 已提供配置，尚未完整验证 |
-| Egern | 使用 Surge 模块，尚未完整验证 |
+| 客户端 | 状态 | 社区配置 |
+|---|---|---|
+| Shadowrocket | 当前用于真机测试 | App 内置教程 |
+| Surge | 已提供配置，尚未完整验证 | 待征集 |
+| Quantumult X | 已提供配置，尚未完整验证 | 待征集 |
+| Loon | 已提供配置，尚未完整验证 | 待征集 |
+| Stash | 已提供配置，尚未完整验证 | 待征集 |
+| Egern | 使用 Surge 模块，尚未完整验证 | 待征集 |
+
+社区配置按客户端分区审核；采纳后会在上表链接教程和投稿者，投稿者也可以选择匿名收录。
 
 相关模块快照和来源记录：
 
@@ -323,6 +325,7 @@ dist/PaopaoLocationSpoofer-unsigned.ipa
 - Bug Report；
 - Feature Request；
 - 兼容性测试结果；
+- [第三方客户端教程和脱敏原始截图](docs/COMMUNITY_TUTORIALS.md)；
 - 性能改进；
 - 文档改进；
 - 测试补充。
@@ -340,6 +343,7 @@ dist/PaopaoLocationSpoofer-unsigned.ipa
 
 - [构建说明](docs/BUILD.md)
 - [第三方模块说明](docs/THIRD_PARTY_MODULES.md)
+- [社区客户端教程与截图提交](docs/COMMUNITY_TUTORIALS.md)
 - [更新日志](docs/CHANGELOG.md)
 - [英文文档](README.en.md)
 - [GitHub Issues](https://github.com/xweiba/location-spoofer/issues)

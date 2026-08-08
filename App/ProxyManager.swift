@@ -119,31 +119,19 @@ final class ProxyManager: ObservableObject {
         return (Double(r.r0), Double(r.r1), r.r2 != 0)
     }
 
-    @discardableResult
-    func openCertificateDownload() async -> Bool {
+    func prepareCertificateDownloadURL() async -> URL? {
         do {
             if !isRunning { try await start() }
-            // 本地代理直接提供 CA 证书下载
             guard let url = URL(string: "http://127.0.0.1:8888/cert") else {
                 error = "证书下载地址无效"
-                return false
-            }
-            let opened = await withCheckedContinuation { continuation in
-                UIApplication.shared.open(url, options: [:]) { accepted in
-                    continuation.resume(returning: accepted)
-                }
-            }
-            guard opened else {
-                error = "系统无法打开证书下载页面，请稍后重试"
-                RuntimeLogger.warning("APP", "Certificate", "系统拒绝打开证书下载地址")
-                return false
+                return nil
             }
             error = nil
-            return true
+            return url
         } catch {
             self.error = "启动代理失败: \(error.localizedDescription)"
-            RuntimeLogger.error("APP", "Certificate", "打开证书下载失败", error: error)
-            return false
+            RuntimeLogger.error("APP", "Certificate", "准备证书下载失败", error: error)
+            return nil
         }
     }
 

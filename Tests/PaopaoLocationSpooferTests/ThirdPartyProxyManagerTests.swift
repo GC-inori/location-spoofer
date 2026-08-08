@@ -66,8 +66,8 @@ final class ThirdPartyProxyManagerTests: XCTestCase {
     }
 
     func testClientLinksUseOfficialUpstreamModulesAndVerificationLabels() {
-        XCTAssertEqual(ThirdPartyProxyClient.shadowrocket.verificationText, "当前可测试")
-        XCTAssertTrue(ThirdPartyProxyClient.surge.verificationText.contains("尚未验证"))
+        XCTAssertNil(ThirdPartyProxyClient.shadowrocket.verificationText)
+        XCTAssertTrue(ThirdPartyProxyClient.surge.verificationText?.contains("尚未验证") == true)
         XCTAssertEqual(ThirdPartyProxyClient.egern.subscriptionURL, ThirdPartyProxyClient.surge.subscriptionURL)
         XCTAssertTrue(ThirdPartyProxyClient.stash.subscriptionURL.absoluteString.hasSuffix("/modules/wloc.stoverride"))
         XCTAssertTrue(ThirdPartyProxyClient.shadowrocket.subscriptionURL.absoluteString.hasSuffix("/modules/wloc.module"))

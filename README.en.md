@@ -163,14 +163,17 @@ Suitable for:
 
 Current client status:
 
-| Client | Status |
-|---|---|
-| Shadowrocket | Currently used for on-device testing |
-| Surge | Configuration provided, not fully verified |
-| Quantumult X | Configuration provided, not fully verified |
-| Loon | Configuration provided, not fully verified |
-| Stash | Configuration provided, not fully verified |
-| Egern | Uses the Surge module, not fully verified |
+| Client | Status | Community configuration |
+|---|---|---|
+| Shadowrocket | Currently used for on-device testing | Built-in App guide |
+| Surge | Configuration provided, not fully verified | Contributions wanted |
+| Quantumult X | Configuration provided, not fully verified | Contributions wanted |
+| Loon | Configuration provided, not fully verified | Contributions wanted |
+| Stash | Configuration provided, not fully verified | Contributions wanted |
+| Egern | Uses the Surge module, not fully verified | Contributions wanted |
+
+Community configurations are reviewed by client. Accepted submissions are linked in this table with attribution unless
+the contributor requests anonymous inclusion.
 
 Module snapshots and provenance:
 

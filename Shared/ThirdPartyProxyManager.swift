@@ -197,8 +197,8 @@ enum ThirdPartyProxyClient: String, CaseIterable, Identifiable {
         }
     }
 
-    var verificationText: String {
-        self == .shadowrocket ? "当前可测试" : "配置已提供，尚未验证"
+    var verificationText: String? {
+        self == .shadowrocket ? nil : "配置已提供，尚未验证"
     }
 
     var moduleFileName: String {

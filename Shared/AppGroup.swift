@@ -116,3 +116,39 @@ struct VirtualLocationTipPreferences {
         }
     }
 }
+
+/// Controls the optional prompt asking users to share a verified third-party setup.
+struct ThirdPartyCommunityPromptPreferences {
+    static let minimumCountForSuppression = 3
+
+    private enum Key {
+        static let presentationCount = "thirdPartyCommunityPrompt.presentationCount"
+        static let suppressed = "thirdPartyCommunityPrompt.suppressed"
+    }
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppGroup.defaults) {
+        self.defaults = defaults
+    }
+
+    @discardableResult
+    func recordPresentation() -> Int {
+        let next = defaults.integer(forKey: Key.presentationCount) + 1
+        defaults.set(next, forKey: Key.presentationCount)
+        return next
+    }
+
+    func shouldPresent() -> Bool {
+        !defaults.bool(forKey: Key.suppressed)
+    }
+
+    func canSuppress() -> Bool {
+        defaults.integer(forKey: Key.presentationCount) >= Self.minimumCountForSuppression
+    }
+
+    func suppress() {
+        guard canSuppress() else { return }
+        defaults.set(true, forKey: Key.suppressed)
+    }
+}
