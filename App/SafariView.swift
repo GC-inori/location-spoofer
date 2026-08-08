@@ -1,6 +1,11 @@
 import SafariServices
 import SwiftUI
 
+struct SafariDestination: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
 

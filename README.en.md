@@ -330,21 +330,25 @@ Do not post real locations, authentication information, CA private keys, or comp
 
 Contributions are welcome for:
 
-- Bug reports;
-- Feature requests;
-- Compatibility results;
+- [Bug reports](https://github.com/xweiba/location-spoofer/issues/new?template=bug-report.yml);
+- [Feature requests](https://github.com/xweiba/location-spoofer/discussions/categories/%E5%8A%9F%E8%83%BD%E5%BB%BA%E8%AE%AE);
+- [Usage help and compatibility results](https://github.com/xweiba/location-spoofer/discussions/categories/%E4%BD%BF%E7%94%A8%E5%B8%AE%E5%8A%A9);
+- [Third-party client configurations and sanitized screenshots](https://github.com/xweiba/location-spoofer/discussions/categories/%E7%AC%AC%E4%B8%89%E6%96%B9%E9%85%8D%E7%BD%AE%E5%88%86%E4%BA%AB);
 - Performance improvements;
 - Documentation improvements;
 - Additional tests.
 
-When filing an issue, include:
+For bugs, generate a report from **Settings → Support → Report Bug** in the App whenever possible. The report includes:
 
 - iOS version;
-- Device model;
+- App version;
 - Runtime mode;
-- Reproduction steps;
+- Selected third-party client;
+- Whether the issue is reproducible;
+- Problem description;
 - Sanitized runtime logs;
-- Whether a third-party proxy client was used.
+
+Paste it into the **App-generated diagnostic report** field in the GitHub Issue Form.
 
 ## Documentation
 

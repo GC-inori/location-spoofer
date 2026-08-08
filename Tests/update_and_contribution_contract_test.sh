@@ -7,6 +7,11 @@ CONTENT="$ROOT/App/ContentView.swift"
 MAP="$ROOT/App/MapHomeView.swift"
 SETUP="$ROOT/App/FirstSetupView.swift"
 SETTINGS="$ROOT/App/SettingsView.swift"
+BUG_REPORT="$ROOT/App/BugReportView.swift"
+GITHUB_SUBMISSION="$ROOT/Shared/GitHubSubmission.swift"
+DISCUSSION_FORM="$ROOT/.github/DISCUSSION_TEMPLATE/第三方配置分享.yml"
+ISSUE_FORM="$ROOT/.github/ISSUE_TEMPLATE/bug-report.yml"
+ISSUE_CONFIG="$ROOT/.github/ISSUE_TEMPLATE/config.yml"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -55,14 +60,85 @@ grep -q 'Button("取消", role: .cancel)' "$MAP" \
   || fail "the first community prompts must expose cancel"
 grep -q 'Button("不再提示", role: .cancel)' "$MAP" \
   || fail "the third community prompt must allow permanent suppression"
-grep -q '匿名收录，不在 README 展示投稿账号' "$MAP" \
+grep -q '匿名收录，不在 README 展示投稿账号' "$GITHUB_SUBMISSION" \
   || fail "the contribution template must offer anonymous README attribution"
-grep -q 'community-config,client-\\(client.rawValue)' "$MAP" \
-  || fail "community submissions must be categorized by client labels"
-grep -q 'UIPasteboard.general.string = communityContributionIssueBody' "$MAP" \
-  || fail "the explicit copy action must copy the issue template"
-! grep -A25 'private func openCommunityContributionIssue' "$MAP" | grep -q 'UIPasteboard.general.string' \
-  || fail "opening GitHub must not copy the template automatically"
+grep -Fq 'https://github.com/xweiba/location-spoofer/discussions/new?category=%E7%AC%AC%E4%B8%89%E6%96%B9%E9%85%8D%E7%BD%AE%E5%88%86%E4%BA%AB' "$GITHUB_SUBMISSION" \
+  || fail "community submission must use one fixed Discussions address"
+grep -q 'UIPasteboard.general.string = GitHubSubmission.communityContributionTemplate' "$MAP" \
+  || fail "the explicit copy action must copy the contribution template"
+grep -A8 'Button("去提交")' "$MAP" | grep -q 'UIPasteboard.general.string = GitHubSubmission.communityContributionTemplate' \
+  || fail "the submit action must copy the template before opening GitHub"
+grep -A8 'Button("去提交")' "$MAP" | grep -q 'openCommunityContributionPage()' \
+  || fail "the submit action must open the fixed Discussions page after copying"
+! grep -A12 'private func openCommunityContributionPage' "$MAP" | grep -q 'URLComponents' \
+  || fail "the fixed community address must not be rebuilt from dynamic query items"
+grep -A4 'private func openCommunityContributionPage' "$MAP" | grep -q 'SafariDestination' \
+  || fail "community submission must open with the shared in-App Safari destination"
+! grep -A4 'private func openCommunityContributionPage' "$MAP" | grep -q 'UIApplication.shared.open' \
+  || fail "community submission must not be intercepted by an external GitHub client"
+test -s "$DISCUSSION_FORM" \
+  || fail "the fixed Discussions category must provide a maintained submission form"
+grep -q 'label: 第三方客户端' "$DISCUSSION_FORM" \
+  || fail "the Discussions form must classify submissions by client"
+grep -q '匿名收录，不在 README 展示投稿账号' "$DISCUSSION_FORM" \
+  || fail "the Discussions form must retain anonymous README attribution"
+grep -q '请先移除账号、订阅、密码、设备标识、真实位置等敏感信息' "$DISCUSSION_FORM" \
+  || fail "the Discussions form must remind users to remove sensitive information"
+grep -q '截图除敏感信息遮挡外不要添加箭头、编号或说明文字' "$DISCUSSION_FORM" \
+  || fail "the Discussions form must explain the screenshot annotation rule"
+! grep -q 'label: 隐私确认' "$DISCUSSION_FORM" \
+  || fail "the Discussions form must not require a separate privacy confirmation"
+for field in \
+  '## 第三方客户端' \
+  '## 第三方客户端版本' \
+  '## iOS 版本' \
+  '## 配置步骤' \
+  '## 截图与补充说明' \
+  '## README 收录署名'; do
+  grep -Fq "$field" "$GITHUB_SUBMISSION" \
+    || fail "the App contribution template must match Discussions field: $field"
+done
+grep -Fq 'label: 第三方客户端版本' "$DISCUSSION_FORM" \
+  || fail "the Discussions form must clearly request the third-party client version"
+
+grep -Fq 'https://github.com/xweiba/location-spoofer/issues/new?template=bug-report.yml' "$GITHUB_SUBMISSION" \
+  || fail "the App bug report must open the dedicated Issue form"
+grep -Fq 'GitHubSubmission.bugReportURL' "$BUG_REPORT" \
+  || fail "the App bug report must use the shared GitHub destination"
+grep -Fq 'SafariView(url: destination.url)' "$BUG_REPORT" \
+  || fail "the App bug report must open in the shared in-App Safari view"
+! grep -q 'UIApplication.shared.open' "$BUG_REPORT" \
+  || fail "the App bug report must not be handed to an external GitHub client"
+grep -Fq 'App 生成的诊断报告' "$BUG_REPORT" \
+  || fail "the App must tell users where to paste the generated report"
+grep -Fq '第三方客户端:' "$BUG_REPORT" \
+  || fail "the generated report must identify the selected third-party client"
+grep -Fq 'Label("报告 Bug"' "$SETTINGS" \
+  || fail "Settings must identify the support action as a bug report"
+for action in '使用帮助' '功能建议' '分享第三方配置'; do
+  grep -Fq "Label(\"$action\"" "$SETTINGS" \
+    || fail "Settings support must expose: $action"
+done
+grep -A8 'Label("分享第三方配置"' "$SETTINGS" >/dev/null \
+  || fail "Settings must retain the manual third-party sharing action"
+grep -q 'GitHubSubmission.communityContributionTemplate' "$SETTINGS" \
+  || fail "Settings manual sharing must copy the shared contribution template"
+grep -q 'SafariView(url: destination.url)' "$SETTINGS" \
+  || fail "Settings GitHub support actions must use the in-App Safari view"
+test -s "$ISSUE_FORM" \
+  || fail "the repository must provide a bug report Issue form"
+grep -Fq 'label: App 生成的诊断报告' "$ISSUE_FORM" \
+  || fail "the Issue form must expose the field named by the App"
+grep -Fq '设置 → 支持 → 报告 Bug' "$ISSUE_FORM" \
+  || fail "the Issue form must point users to the matching App workflow"
+grep -Fq 'label: 我已移除真实位置、认证信息、订阅地址、证书私钥和其他敏感信息' "$ISSUE_FORM" \
+  || fail "the Issue form must require privacy confirmation"
+grep -Fq 'blank_issues_enabled: false' "$ISSUE_CONFIG" \
+  || fail "blank Issues must be disabled so reports use the maintained form"
+for destination in '使用帮助' '功能建议' '第三方配置分享'; do
+  grep -Fq "name: $destination" "$ISSUE_CONFIG" \
+    || fail "Issue chooser must route non-bug request to $destination"
+done
 
 for obsolete in \
   '我已配置，开始检测' \

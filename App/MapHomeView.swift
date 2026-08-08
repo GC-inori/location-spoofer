@@ -75,6 +75,7 @@ struct MapHomeView: View {
     @State private var pendingCommunityContributionClient: ThirdPartyProxyClient?
     @State private var communityContributionClient: ThirdPartyProxyClient?
     @State private var showCommunityTemplateCopied = false
+    @State private var githubDestination: SafariDestination?
     @State private var editingFavorite: FavoriteLocation?
     @State private var editName = ""
     @State private var reverseGeocodeTask: Task<Void, Never>?
@@ -267,17 +268,28 @@ struct MapHomeView: View {
         .sheet(item: $activeTip) { kind in
             TipSheetView(kind: kind, runtimeMode: runtimeMode.mode)
         }
+        .sheet(item: $githubDestination) { destination in
+            SafariView(url: destination.url)
+                .ignoresSafeArea()
+        }
         .alert("社区分享成功配置？", isPresented: Binding(
             get: { communityContributionClient != nil },
             set: { if !$0 { communityContributionClient = nil } }
         )) {
             Button("去提交") {
                 guard let client = communityContributionClient else { return }
-                openCommunityContributionIssue(for: client)
+                UIPasteboard.general.string = GitHubSubmission.communityContributionTemplate(
+                    for: client,
+                    systemVersion: UIDevice.current.systemVersion
+                )
+                openCommunityContributionPage()
             }
             Button("复制模板") {
                 guard let client = communityContributionClient else { return }
-                UIPasteboard.general.string = communityContributionIssueBody(for: client)
+                UIPasteboard.general.string = GitHubSubmission.communityContributionTemplate(
+                    for: client,
+                    systemVersion: UIDevice.current.systemVersion
+                )
                 showCommunityTemplateCopied = true
             }
             if communityPromptPreferences.canSuppress() {
@@ -289,7 +301,7 @@ struct MapHomeView: View {
             }
         } message: {
             Text(
-                "你正在使用 \(communityContributionClient?.name ?? "第三方客户端")。欢迎分享成功配置，采纳后将收录到 README，可选择是否匿名署名。提交前请移除账号、订阅和其他敏感信息。"
+                "你正在使用 \(communityContributionClient?.name ?? "第三方客户端")。点击“去提交”会先复制投稿模板，并在 App 内打开社区页面。采纳后将收录到 README，可选择是否匿名署名。"
             )
         }
         .alert("已复制投稿模板", isPresented: $showCommunityTemplateCopied) {
@@ -781,44 +793,8 @@ struct MapHomeView: View {
         }
     }
 
-    private func openCommunityContributionIssue(for client: ThirdPartyProxyClient) {
-        let issueBody = communityContributionIssueBody(for: client)
-        var components = URLComponents(
-            string: "https://github.com/xweiba/location-spoofer/issues/new"
-        )
-        components?.queryItems = [
-            URLQueryItem(
-                name: "title",
-                value: "[第三方配置分享] \(client.name) 成功配置"
-            ),
-            URLQueryItem(
-                name: "body",
-                value: issueBody
-            ),
-            URLQueryItem(
-                name: "labels",
-                value: "community-config,client-\(client.rawValue)"
-            )
-        ]
-        guard let url = components?.url else { return }
-        UIApplication.shared.open(url)
-    }
-
-    private func communityContributionIssueBody(for client: ThirdPartyProxyClient) -> String {
-        """
-        ## 客户端
-        \(client.name)
-
-        ## 配置说明
-        请描述模块导入、MITM、证书和代理连接步骤，并附上必要截图。
-
-        ## README 收录署名
-        - [ ] 匿名收录，不在 README 展示投稿账号
-
-        ## 隐私确认
-        - [ ] 已移除账号、订阅地址、密码、设备标识、真实位置等敏感信息
-        - [ ] 原始截图除敏感信息遮挡外未添加其他标注
-        """
+    private func openCommunityContributionPage() {
+        githubDestination = SafariDestination(url: GitHubSubmission.communityContributionURL)
     }
 
 

@@ -322,22 +322,25 @@ dist/PaopaoLocationSpoofer-unsigned.ipa
 
 欢迎提交：
 
-- Bug Report；
-- Feature Request；
-- 兼容性测试结果；
-- [第三方客户端教程和脱敏原始截图](docs/COMMUNITY_TUTORIALS.md)；
+- [Bug Report](https://github.com/xweiba/location-spoofer/issues/new?template=bug-report.yml)；
+- [功能建议](https://github.com/xweiba/location-spoofer/discussions/categories/%E5%8A%9F%E8%83%BD%E5%BB%BA%E8%AE%AE)；
+- [使用帮助与兼容性测试](https://github.com/xweiba/location-spoofer/discussions/categories/%E4%BD%BF%E7%94%A8%E5%B8%AE%E5%8A%A9)；
+- [第三方客户端配置和脱敏原始截图](https://github.com/xweiba/location-spoofer/discussions/categories/%E7%AC%AC%E4%B8%89%E6%96%B9%E9%85%8D%E7%BD%AE%E5%88%86%E4%BA%AB)；
 - 性能改进；
 - 文档改进；
 - 测试补充。
 
-提交 Issue 时建议包含：
+提交 Bug 时建议优先通过 App 的“设置 → 支持 → 报告 Bug”生成报告。报告包含：
 
 - iOS 版本；
-- 设备型号；
+- App 版本；
 - 使用的运行模式；
-- 复现步骤；
+- 当前第三方客户端；
+- 是否可以稳定复现；
+- 问题描述；
 - 脱敏后的运行日志；
-- 是否使用第三方代理客户端。
+
+GitHub Issue Form 中的“App 生成的诊断报告”字段与 App 复制内容一一对应。
 
 ## 文档
 

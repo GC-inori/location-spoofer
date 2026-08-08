@@ -5,19 +5,22 @@
 
 ## 客户端分区
 
-投稿 Issue 使用 `community-config` 总标签，并按客户端增加以下分区标签：
+投稿统一进入 GitHub Discussions 的“第三方配置分享”固定入口。表单通过“第三方客户端”下拉框分类：
 
-| 客户端 | 分区标签 |
+| 客户端 | 表单选项 |
 |---|---|
-| Shadowrocket | `client-shadowrocket` |
-| Surge | `client-surge` |
-| Quantumult X | `client-quantumultX` |
-| Loon | `client-loon` |
-| Stash | `client-stash` |
-| Egern | `client-egern` |
+| Shadowrocket | `Shadowrocket` |
+| Surge | `Surge` |
+| Quantumult X | `Quantumult X` |
+| Loon | `Loon` |
+| Stash | `Stash` |
+| Egern | `Egern` |
 
-App 打开的投稿链接会预填对应标签、客户端名称和模板。采纳后的配置在 README 客户端状态表中按客户端收录，
-并链接到教程或原始投稿。投稿者可以选择匿名收录；未选择匿名时可在 README 中显示 GitHub 账号。
+App 始终打开同一个投稿地址，仓库中的 Discussion 表单负责维护客户端、版本、步骤、截图和署名字段。
+“去提交”会先复制带当前客户端名称的投稿模板，再通过 App 内 Safari 打开固定页面，避免被不支持
+Discussions 的 GitHub 客户端拦截。用户也可以从 Safari 视图的分享菜单改用其他浏览器。“复制模板”按钮仍可
+单独使用，设置页的“支持 → 分享第三方配置”也提供相同入口。采纳后的配置在 README 客户端状态表中按客户端
+收录，并链接到教程或原始投稿。投稿者可以选择匿名收录；未选择匿名时可在 README 中显示 GitHub 账号。
 
 ## 提交内容
 

@@ -23,5 +23,9 @@ Wloc.xcodeproj/
 .github/*
 !.github/workflows/
 !.github/workflows/**
+!.github/DISCUSSION_TEMPLATE/
+!.github/DISCUSSION_TEMPLATE/**
+!.github/ISSUE_TEMPLATE/
+!.github/ISSUE_TEMPLATE/**
 Core/core
 docs/superpowers/

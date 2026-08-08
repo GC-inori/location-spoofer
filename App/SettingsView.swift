@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var modeOperationRunning = false
     @State private var copiedClient: ThirdPartyProxyClient?
     @State private var showCertificateResetConfirmation = false
+    @State private var githubDestination: SafariDestination?
 
     var body: some View {
         Form {
@@ -120,7 +121,33 @@ struct SettingsView: View {
                 NavigationLink {
                     BugReportView(setup: setup)
                 } label: {
-                    Label("报告 Issue", systemImage: "ladybug")
+                    Label("报告 Bug", systemImage: "ladybug")
+                }
+
+                Button {
+                    githubDestination = SafariDestination(url: GitHubSubmission.usageHelpURL)
+                } label: {
+                    Label("使用帮助", systemImage: "questionmark.circle")
+                }
+
+                Button {
+                    githubDestination = SafariDestination(url: GitHubSubmission.featureRequestURL)
+                } label: {
+                    Label("功能建议", systemImage: "lightbulb")
+                }
+
+                if runtimeMode.mode == .thirdParty {
+                    Button {
+                        UIPasteboard.general.string = GitHubSubmission.communityContributionTemplate(
+                            for: thirdPartyClient.selectedClient,
+                            systemVersion: UIDevice.current.systemVersion
+                        )
+                        githubDestination = SafariDestination(
+                            url: GitHubSubmission.communityContributionURL
+                        )
+                    } label: {
+                        Label("分享第三方配置", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
 
@@ -155,6 +182,10 @@ struct SettingsView: View {
         }
         .sheet(item: $activeTip) { kind in
             TipSheetView(kind: kind)
+        }
+        .sheet(item: $githubDestination) { destination in
+            SafariView(url: destination.url)
+                .ignoresSafeArea()
         }
         .alert(proxyOperationAlertTitle, isPresented: Binding(
             get: { !proxyOperationError.isEmpty },
