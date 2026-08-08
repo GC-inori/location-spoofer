@@ -27,6 +27,16 @@ grep -Fq 'Label("打开 \(client.name)"' "$SETUP" \
 grep -Fq 'Label("打开 \(thirdPartyClient.selectedClient.name)"' "$SETTINGS" || fail "Settings must expose a client launch action"
 ! grep -q '在浏览器打开模块文件' "$SETTINGS" || fail "Settings must not open the module URL as the primary client action"
 grep -q 'requestThirdPartySetup' "$SETTINGS" || fail "Settings must reopen third-party setup"
+grep -q 'static let configurationEndpoint' "$MANAGER" \
+  || fail "the third-party configuration endpoint must have one shared owner"
+grep -q 'DisclosureGroup("第三方客户端适配说明")' "$SETUP" \
+  || fail "client selection must expose the third-party integration contract"
+grep -Fq '查询：GET ?action=query' "$SETUP" \
+  || fail "client integration guidance must document the query action"
+grep -Fq '保存：GET ?lon=<经度>&lat=<纬度>&acc=<精度>' "$SETUP" \
+  || fail "client integration guidance must document WGS-84 coordinate saving"
+grep -Fq '清除：GET ?action=clear' "$SETUP" \
+  || fail "client integration guidance must document the clear action"
 
 for file in wloc.module wloc.sgmodule wloc.conf wloc.lpx wloc.stoverride; do
   test -s "$MODULES/$file" || fail "missing bundled module: $file"

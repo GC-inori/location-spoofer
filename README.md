@@ -130,6 +130,53 @@ WLOC 配置接口
 - 是否支持 Wi-Fi、4G 或 5G 取决于客户端；
 - App 关闭后，第三方客户端中的配置可能继续生效。
 
+#### 配置接口与客户端适配
+
+App 不会把坐标上传到项目服务器。它会发起以下 GET 请求，第三方客户端必须在设备本地拦截：
+
+```text
+https://gs-loc.apple.com/wloc-settings/save
+```
+
+| 操作 | 查询参数 | 用途 |
+|---|---|---|
+| 查询 | `action=query` | 检查模块是否连接，并读取当前保存的坐标 |
+| 保存 | `lon=<WGS-84 经度>&lat=<WGS-84 纬度>&acc=<精度>` | 保存当前选点 |
+| 清除 | `action=clear` | 删除已保存的测试坐标 |
+
+拦截脚本必须返回 HTTP 200 和 JSON：
+
+```json
+{
+  "success": true,
+  "longitude": 113.0,
+  "latitude": 22.0,
+  "accuracy": 25
+}
+```
+
+失败时返回：
+
+```json
+{
+  "success": false,
+  "error": "错误说明"
+}
+```
+
+查询时没有已保存坐标，可以返回 `{"success":false,"error":"无已保存的坐标"}`。App 会把它识别为
+“模块已连接，但虚拟定位未开启”。保存成功时，响应中的经纬度必须与请求中的 WGS-84 坐标一致。
+
+要适配新的第三方客户端，需要：
+
+1. 为 `gs-loc.apple.com/wloc-settings/save` 添加 HTTP 请求脚本，解析上述参数并返回约定 JSON；
+2. 使用客户端的持久化存储保存坐标、精度和可选状态；
+3. 为 `gs-loc.apple.com` 和 `gs-loc-cn.apple.com` 配置 HTTPS 解密；
+4. 拦截 `gs-loc(-cn).apple.com/clls/wloc` 响应，读取同一份持久化数据并修改 WLOC 响应；
+5. 提供可订阅的模块文件，并确认查询、保存、清除和定位恢复都能在真机完成。
+
+App 只验证配置接口的 HTTP 状态、JSON 格式和坐标回读，不管理第三方客户端的证书、MITM、VPN 或代理状态。
+
 不要同时启用 APP 模式代理和第三方代理模式，避免两个代理链路互相干扰。
 
 ## 运行模式

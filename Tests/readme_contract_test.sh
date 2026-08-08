@@ -53,6 +53,14 @@ test "$(grep -c '^## ' "$ZH")" -eq "$(grep -c '^## ' "$EN")" \
 grep -q '当前项目不支持在 Windows 上直接构建 iOS 应用' "$ZH" || fail "Chinese README must reject Windows source builds"
 grep -q 'Building the iOS app directly on Windows is not supported' "$EN" || fail "English README must reject Windows source builds"
 grep -q 'docs/COMMUNITY_TUTORIALS.md' "$ZH" || fail "Chinese README must link the community tutorial submission guide"
+grep -q '^#### 配置接口与客户端适配$' "$ZH" \
+  || fail "Chinese README must document the third-party integration contract"
+grep -q '^#### Configuration API and Client Integration$' "$EN" \
+  || fail "English README must document the third-party integration contract"
+for contract in 'action=query' 'action=clear' 'lon=<WGS-84'; do
+  grep -q "$contract" "$ZH" || fail "Chinese README is missing third-party contract: $contract"
+  grep -q "$contract" "$EN" || fail "English README is missing third-party contract: $contract"
+done
 grep -q '除敏感信息遮挡外，不要自行添加箭头、编号、边框、说明文字或其他标注' \
   "$ROOT/docs/COMMUNITY_TUTORIALS.md" \
   || fail "tutorial submissions must keep source screenshots free of non-privacy annotations"

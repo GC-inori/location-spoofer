@@ -47,12 +47,12 @@ extension URLSession: ThirdPartyProxyRequesting {}
 final class ThirdPartyProxyManager: ObservableObject {
     static let shared = ThirdPartyProxyManager()
     static let interceptionHostname = "gs-loc.apple.com"
+    static let configurationEndpoint = URL(string: "https://gs-loc.apple.com/wloc-settings/save")!
 
     @Published private(set) var connectionState: ThirdPartyProxyConnectionState = .unknown
     @Published private(set) var activeSettings: ThirdPartyProxySettingsResponse?
     @Published private(set) var isRequesting = false
     private let requester: any ThirdPartyProxyRequesting
-    private let endpoint = URL(string: "https://gs-loc.apple.com/wloc-settings/save")!
 
     init(requester: (any ThirdPartyProxyRequesting)? = nil) {
         if let requester {
@@ -134,7 +134,7 @@ final class ThirdPartyProxyManager: ObservableObject {
         isRequesting = true
         defer { isRequesting = false }
 
-        var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+        var components = URLComponents(url: Self.configurationEndpoint, resolvingAgainstBaseURL: false)!
         switch action {
         case .query:
             components.queryItems = [URLQueryItem(name: "action", value: "query")]

@@ -134,6 +134,57 @@ In this mode:
 - Wi-Fi, 4G, and 5G support depends on the client;
 - The configuration may remain active after Location Spoofer closes.
 
+#### Configuration API and Client Integration
+
+The app does not upload coordinates to a project server. It sends the following GET request, which the third-party
+client must intercept locally on the device:
+
+```text
+https://gs-loc.apple.com/wloc-settings/save
+```
+
+| Action | Query parameters | Purpose |
+|---|---|---|
+| Query | `action=query` | Verify module connectivity and read the stored coordinate |
+| Save | `lon=<WGS-84 longitude>&lat=<WGS-84 latitude>&acc=<accuracy>` | Store the selected coordinate |
+| Clear | `action=clear` | Remove the stored test coordinate |
+
+The interception script must return HTTP 200 with JSON:
+
+```json
+{
+  "success": true,
+  "longitude": 113.0,
+  "latitude": 22.0,
+  "accuracy": 25
+}
+```
+
+Failures use:
+
+```json
+{
+  "success": false,
+  "error": "Error description"
+}
+```
+
+When no coordinate is stored, a query may return `{"success":false,"error":"无已保存的坐标"}`. The app interprets
+that response as “module connected, virtual location inactive.” A successful save response must echo the requested
+WGS-84 longitude and latitude.
+
+To integrate another third-party client:
+
+1. Add an HTTP request script for `gs-loc.apple.com/wloc-settings/save` that parses the parameters and returns the
+   specified JSON;
+2. Store coordinates, accuracy, and optional state in the client's persistent storage;
+3. Enable HTTPS decryption for `gs-loc.apple.com` and `gs-loc-cn.apple.com`;
+4. Intercept `gs-loc(-cn).apple.com/clls/wloc` responses, read the same persistent data, and modify the WLOC response;
+5. Publish an importable module and verify query, save, clear, and location restoration on a real device.
+
+The app validates only the configuration endpoint's HTTP status, JSON shape, and coordinate round trip. It does not
+manage the third-party client's certificate, MITM, VPN, or proxy state.
+
 Do not enable App Mode interception and Third-party Proxy Mode interception at the same time.
 
 ## Runtime Modes

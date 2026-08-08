@@ -430,6 +430,45 @@ struct FirstSetupView: View {
             Text("除 Shadowrocket 外，当前客户端配置尚未完成真机验证，页面只提供模块导入入口和通用配置提醒。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            DisclosureGroup("第三方客户端适配说明") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("工作原理")
+                        .font(.subheadline.bold())
+                    Text("App 不连接远程坐标服务器，而是向 Apple 域名发起一个约定请求。第三方客户端需要在本机拦截该请求、保存 WGS-84 坐标并返回 JSON；定位模块再读取同一份数据，修改 Apple WLOC 响应。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Text("配置接口")
+                        .font(.subheadline.bold())
+                    Text(ThirdPartyProxyManager.configurationEndpoint.absoluteString)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                    Text("""
+                    查询：GET ?action=query
+                    保存：GET ?lon=<经度>&lat=<纬度>&acc=<精度>
+                    清除：GET ?action=clear
+                    """)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+
+                    Text("返回格式")
+                        .font(.subheadline.bold())
+                    Text("""
+                    成功：{"success":true,"longitude":113.0,"latitude":22.0,"accuracy":25}
+                    失败：{"success":false,"error":"错误说明"}
+                    """)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+
+                    Text("适配要求")
+                        .font(.subheadline.bold())
+                    Text("客户端需要支持请求脚本、持久化存储、HTTP 200 JSON 响应、Apple WLOC 响应脚本，以及 gs-loc.apple.com / gs-loc-cn.apple.com 的 HTTPS 解密。保存接口和 WLOC 响应脚本必须读取同一份持久化数据。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
+            }
         }
     }
 
