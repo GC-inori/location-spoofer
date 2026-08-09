@@ -444,6 +444,15 @@ The core location-response handling approach, Go implementation, and third-party
 
 - [Yu9191/wloc](https://github.com/Yu9191/wloc)
 
+Thanks to the following LINUX DO users for their contributions:
+
+- Bug fixes: [Chen Ze](https://linux.do/u/lixiaobaivv)
+- Ideas and suggestions: [Alex](https://linux.do/u/_alex), [ye4241](https://linux.do/u/ye4241)
+
+Related projects from LINUX DO community members:
+
+- [Wet Dream Boy](https://linux.do/u/wet_dream_boy) - [iOS Location Spoofer Web](https://github.com/akudamatata/iOS-Location-Spoofer-Web)
+
 Community link:
 
 - [LINUX DO](https://linux.do/)

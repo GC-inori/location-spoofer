@@ -432,6 +432,15 @@ GitHub Issue Form 中的“App 生成的诊断报告”字段与 App 复制内�
 
 - [Yu9191/wloc](https://github.com/Yu9191/wloc)
 
+感谢以下 LINUX DO 用户对项目的贡献：
+
+- 功能修复：[陈泽](https://linux.do/u/lixiaobaivv)
+- 思路及建议：[Alex](https://linux.do/u/_alex)、[ye4241](https://linux.do/u/ye4241)
+
+佬友相关项目：
+
+- [Wet Dream Boy](https://linux.do/u/wet_dream_boy) - [iOS Location Spoofer Web](https://github.com/akudamatata/iOS-Location-Spoofer-Web)
+
 友链：
 
 - [LINUX DO](https://linux.do/)
