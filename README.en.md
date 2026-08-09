@@ -443,20 +443,17 @@ guarantee for every app or release.
 The core location-response handling approach, Go implementation, and third-party modules are based on:
 
 - [Yu9191/wloc](https://github.com/Yu9191/wloc)
+- [ios-location-spoofer](https://github.com/mekos2772/ios-location-spoofer)
 
 Thanks to the following LINUX DO users for their contributions:
 
 - Bug fixes: [Chen Ze](https://linux.do/u/lixiaobaivv)
 - Ideas and suggestions: [Alex](https://linux.do/u/_alex), [ye4241](https://linux.do/u/ye4241)
 
-Related projects from LINUX DO community members:
-
-- [Wet Dream Boy](https://linux.do/u/wet_dream_boy) - [iOS Location Spoofer Web](https://github.com/akudamatata/iOS-Location-Spoofer-Web)
-- [mekos2772](https://github.com/mekos2772) - [ios-location-spoofer](https://github.com/mekos2772/ios-location-spoofer)
-
-Community link:
+Links:
 
 - [LINUX DO](https://linux.do/)
+- [iOS-Location-Spoofer-Web](https://github.com/akudamatata/iOS-Location-Spoofer-Web)
 
 Thanks to the open-source contributors working on iOS location-service research, network proxies, and mobile testing
 tools.
