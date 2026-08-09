@@ -452,6 +452,7 @@ Thanks to the following LINUX DO users for their contributions:
 Related projects from LINUX DO community members:
 
 - [Wet Dream Boy](https://linux.do/u/wet_dream_boy) - [iOS Location Spoofer Web](https://github.com/akudamatata/iOS-Location-Spoofer-Web)
+- [mekos2772](https://github.com/mekos2772) - [ios-location-spoofer](https://github.com/mekos2772/ios-location-spoofer)
 
 Community link:
 

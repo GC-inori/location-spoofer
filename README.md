@@ -440,6 +440,7 @@ GitHub Issue Form 中的“App 生成的诊断报告”字段与 App 复制内�
 佬友相关项目：
 
 - [Wet Dream Boy](https://linux.do/u/wet_dream_boy) - [iOS Location Spoofer Web](https://github.com/akudamatata/iOS-Location-Spoofer-Web)
+- [mekos2772](https://github.com/mekos2772) - [ios-location-spoofer](https://github.com/mekos2772/ios-location-spoofer)
 
 友链：
 
