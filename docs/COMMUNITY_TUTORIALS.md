@@ -46,7 +46,7 @@ iOS 版本：
 
 步骤 2：
 - 截图：02-https-decryption.jpg
-- 操作：开启 HTTPS 解密，并填写 gs-loc.apple.com
+- 操作：开启 HTTPS 解密，并填写 gs-loc.apple.com、gs-loc-cn.apple.com
 
 验证结果：
 ```

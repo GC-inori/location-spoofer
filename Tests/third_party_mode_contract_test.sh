@@ -40,6 +40,10 @@ grep -Fq '清除：GET ?action=clear' "$SETUP" \
 
 for file in wloc.module wloc.sgmodule wloc.conf wloc.lpx wloc.stoverride; do
   test -s "$MODULES/$file" || fail "missing bundled module: $file"
+  grep -q 'gs-loc.apple.com' "$MODULES/$file" \
+    || fail "$file must include gs-loc.apple.com in its MITM hostnames"
+  grep -q 'gs-loc-cn.apple.com' "$MODULES/$file" \
+    || fail "$file must include gs-loc-cn.apple.com in its MITM hostnames"
 done
 
 grep -q 'wloc.sgmodule' "$MANAGER" || fail "Surge/Egern module mapping is missing"
@@ -48,7 +52,13 @@ grep -q 'shadowrocket://' "$MANAGER" || fail "Shadowrocket launch URL is missing
 for scheme in surge quantumult-x loon stash egern; do
   grep -q "${scheme}://" "$MANAGER" || fail "$scheme launch URL is missing"
 done
-grep -q '复制解密域名' "$SETUP" || fail "Shadowrocket MITM hostname copy action is missing"
+grep -q '复制两个解密域名' "$SETUP" || fail "all clients must expose both MITM hostnames"
+grep -q 'gs-loc.apple.com 和 gs-loc-cn.apple.com' "$SETUP" \
+  || fail "setup guidance must name both Apple location hostnames"
+grep -q 'ThirdPartyProxyManager.interceptionHostnamesText' "$SETUP" \
+  || fail "setup hostname copy actions must use the shared two-host value"
+grep -q 'ThirdPartyProxyManager.interceptionHostnamesText' "$SETTINGS" \
+  || fail "Settings must expose the shared two-host copy action"
 grep -q '配置 → 模块' "$SETUP" || fail "Shadowrocket module import guidance is missing"
 grep -q 'HTTPS 解密' "$SETUP" || fail "Shadowrocket HTTPS decryption guidance is missing"
 ! grep -q '当前可测试' "$SETUP" || fail "Shadowrocket must not show the obsolete current-test label"
@@ -64,10 +74,43 @@ grep -q 'Label("查看诊断日志"' "$SETUP" \
   || fail "third-party connection failure must expose the diagnostics action"
 ! grep -q 'setupActionError = error.localizedDescription' "$SETUP" \
   || fail "third-party connection failure must not use the generic failure alert"
-grep -q 'let response = try await thirdPartyProxy.query()' "$SETUP" \
-  || fail "the import page must query the third-party module"
-grep -A15 'let response = try await thirdPartyProxy.query()' "$SETUP" | grep -q 'onComplete()' \
+grep -q 'let response = try await thirdPartyProxy.validateConnection()' "$SETUP" \
+  || fail "the import page must validate the legacy save/query endpoint"
+grep -A20 'let response = try await thirdPartyProxy.validateConnection()' "$SETUP" \
+  | grep -q 'refreshAdvancedFeatureAvailability()' \
+  || fail "the import page must also probe advanced module capabilities"
+grep -A20 'let response = try await thirdPartyProxy.validateConnection()' "$SETUP" \
+  | grep -q 'motionSimulation.setEnabled(false)' \
+  || fail "an incompatible module must turn motion simulation off without failing basic setup"
+grep -A20 'let response = try await thirdPartyProxy.validateConnection()' "$SETUP" | grep -q 'onComplete()' \
   || fail "a successful third-party connection test must close setup immediately"
+grep -q 'components.queryItems = \[URLQueryItem(name: "action", value: "query")\]' "$MANAGER" \
+  || fail "the connection test must preserve the established save?action=query contract"
+grep -q 'thirdPartyProxy.moduleUpdateRecommended' "$SETTINGS" \
+  || fail "Settings must react to legacy module compatibility mode"
+grep -q '当前模块版本较旧，基础坐标功能仍可继续使用' "$SETTINGS" \
+  || fail "Settings must explain that legacy modules retain basic coordinate support"
+! grep -A8 'Toggle("运动状态模拟"' "$SETTINGS" | grep -q 'thirdPartyProxy.moduleUpdateRecommended' \
+  || fail "legacy module compatibility must turn motion simulation off without disabling its toggle"
+grep -q 'refreshAdvancedFeatureAvailability' "$SETTINGS" \
+  || fail "Settings must probe advanced module availability independently"
+grep -A18 'guard thirdPartyProxy.activeSettings?.success == true else' "$SETTINGS" \
+  | grep -q 'refreshAdvancedFeatureAvailability()' \
+  || fail "enabling inactive third-party motion simulation must validate the version endpoint first"
+grep -A18 'guard thirdPartyProxy.activeSettings?.success == true else' "$SETTINGS" \
+  | grep -q 'motionSimulation.setEnabled(true)' \
+  || fail "inactive third-party motion simulation may enable only after version validation succeeds"
+grep -q 'proxyOperationAlertTitle = "无法开启运动状态模拟"' "$SETTINGS" \
+  || fail "motion simulation must show a dedicated failure alert when version validation fails"
+grep -q '请重新导入最新模块脚本后再开启' "$SETTINGS" \
+  || fail "motion simulation failure must tell the user to update the module script"
+test "$(grep -c 'presentMotionSimulationModuleUpdateAlert()' "$SETTINGS")" -ge 3 \
+  || fail "inactive and active motion simulation paths must share the module-update alert"
+grep -q 'onChange(of: thirdPartyProxy.moduleUpdateRecommended)' "$SETTINGS" \
+  || fail "Settings must react when an installed module becomes incompatible"
+grep -A5 'private func disableUnsupportedThirdPartyMotionSimulation()' "$SETTINGS" \
+  | grep -q 'motionSimulation.setEnabled(false)' \
+  || fail "unsupported third-party modules must force motion simulation off before disabling the toggle"
 ! grep -q 'thirdPartyTestResult?.success' "$SETUP" \
   || fail "a successful third-party test must not leave a separate completion state"
 grep -q 'setupStep = \.thirdPartyImport' "$ROOT/App/SetupCoordinator.swift" \
@@ -112,7 +155,7 @@ test -s "$ROOT/docs/onboarding-screenshots/shadowrocket/shadowrocket-module-impo
 grep -q 'presentSuccessfulOperationTip(.activation)' "$ROOT/App/MapHomeView.swift" || fail "third-party save must present the activation tip"
 grep -q 'presentSuccessfulOperationTip(.deactivation)' "$ROOT/App/MapHomeView.swift" || fail "third-party clear must present the deactivation tip"
 grep -q 'if spoofState == .active' "$ROOT/App/MapHomeView.swift" || fail "manual help must follow the shared spoof state"
-grep -q 'MARKETING_VERSION: "1.0.4"' "$ROOT/project.yml" || fail "marketing version must be 1.0.4"
-grep -q 'CURRENT_PROJECT_VERSION: "5"' "$ROOT/project.yml" || fail "build version must be 5"
+grep -q 'MARKETING_VERSION: "1.0.5"' "$ROOT/project.yml" || fail "marketing version must be 1.0.5"
+grep -q 'CURRENT_PROJECT_VERSION: "6"' "$ROOT/project.yml" || fail "build version must be 6"
 
 echo "PASS: third-party proxy mode contract"

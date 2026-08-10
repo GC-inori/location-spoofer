@@ -25,7 +25,7 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     config = json.load(handle)
 
-assert config["latestVersion"] == "1.0.4"
+assert config["latestVersion"] == "1.0.5"
 assert config["minimumSupportedVersion"] == "1.0.0"
 assert "shadowrocket" not in config["communityPromptClients"]
 assert set(config["communityPromptClients"]) == {
@@ -39,6 +39,10 @@ grep -q 'timeoutIntervalForRequest = 1.5' "$CONFIG" \
   || fail "remote configuration requests must use a short timeout"
 grep -q 'timeoutIntervalForResource = 2' "$CONFIG" \
   || fail "remote configuration resource loading must use a short timeout"
+grep -q 'gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/version.txt' "$CONFIG" \
+  || fail "update detection must prefer the domestic GitHub Raw mirror"
+grep -q 'static let configurationURLs = \[' "$CONFIG" \
+  || fail "update detection must retain multiple configuration sources"
 ! grep -q 'data.count' "$CONFIG" \
   || fail "the client must not impose a remote configuration file-size limit"
 grep -q 'docs/releases/v\\(version).md' "$CONFIG" \
@@ -49,6 +53,12 @@ grep -q '.task { await checkForUpdates() }' "$CONTENT" \
   || fail "update detection must run asynchronously outside bootstrap"
 ! grep -A90 'private func bootstrap() async' "$CONTENT" | grep -q 'fetch()' \
   || fail "remote configuration must not block the startup gate"
+grep -Fq 'Label("检查更新"' "$SETTINGS" \
+  || fail "Settings must expose a manual update check"
+grep -Fq 'title: Text("已是最新版本")' "$SETTINGS" \
+  || fail "manual update checks must report the current-version result"
+grep -Fq 'title: Text("检查更新失败")' "$SETTINGS" \
+  || fail "manual update checks must report network failures"
 
 grep -q '社区分享成功配置？' "$MAP" \
   || fail "non-Shadowrocket success must offer community contribution"

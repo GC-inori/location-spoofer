@@ -54,6 +54,20 @@ enum ThirdPartyProxyError: LocalizedError, Equatable {
             return "模块版本过低，请重新导入模块"
         }
     }
+
+    var recoverySuggestion: String {
+        switch self {
+        case .moduleOutdated:
+            return "删除旧模块后，重新复制并导入最新模块"
+        default:
+            return "检查模块、MITM、证书和代理/VPN连接"
+        }
+    }
+
+    static func recoverySuggestion(for error: Error) -> String {
+        (error as? Self)?.recoverySuggestion
+            ?? "检查模块、MITM、证书和代理/VPN连接"
+    }
 }
 
 protocol ThirdPartyProxyRequesting {
@@ -65,12 +79,17 @@ extension URLSession: ThirdPartyProxyRequesting {}
 @MainActor
 final class ThirdPartyProxyManager: ObservableObject {
     static let shared = ThirdPartyProxyManager()
-    static let interceptionHostname = "gs-loc.apple.com"
+    static let interceptionHostnames = [
+        "gs-loc.apple.com",
+        "gs-loc-cn.apple.com"
+    ]
+    static let interceptionHostnamesText = interceptionHostnames.joined(separator: ", ")
     static let configurationEndpoint = URL(string: "https://gs-loc.apple.com/wloc-settings/save")!
     static let versionEndpoint = URL(string: "https://gs-loc.apple.com/wloc-settings/version")!
 
     @Published private(set) var connectionState: ThirdPartyProxyConnectionState = .unknown
     @Published private(set) var activeSettings: ThirdPartyProxySettingsResponse?
+    @Published private(set) var moduleUpdateRecommended = false
     @Published private(set) var isRequesting = false
     private let requester: any ThirdPartyProxyRequesting
 
@@ -89,24 +108,18 @@ final class ThirdPartyProxyManager: ObservableObject {
 
     func query() async throws -> ThirdPartyProxySettingsResponse {
         let response = try await perform(action: .query)
-        if response.success,
-           response.latitude != nil,
-           response.longitude != nil {
+        let active = try validatedQueryState(response)
+        if active {
             activeSettings = response
             connectionState = .connected(active: true)
-        } else if response.error?.contains("无已保存") == true {
+        } else {
             activeSettings = nil
             connectionState = .connected(active: false)
-        } else {
-            let error = ThirdPartyProxyError.rejected(response.error ?? "第三方代理查询失败")
-            connectionState = .failed(error.localizedDescription)
-            throw error
         }
         return response
     }
 
     func save(_ favorite: FavoriteLocation) async throws -> ThirdPartyProxySettingsResponse {
-        _ = try await validateVersion()
         let wgs84 = favorite.coordinatePair.wgs84
         let response = try await perform(action: .save(
             latitude: wgs84.latitude,
@@ -139,7 +152,9 @@ final class ThirdPartyProxyManager: ObservableObject {
               let longitude = current.longitude else {
             throw ThirdPartyProxyError.rejected("第三方虚拟定位尚未开启")
         }
-        _ = try await validateVersion()
+        guard await refreshAdvancedFeatureAvailability() else {
+            throw ThirdPartyProxyError.moduleOutdated
+        }
         let response = try await perform(action: .save(
             latitude: latitude,
             longitude: longitude,
@@ -151,6 +166,10 @@ final class ThirdPartyProxyManager: ObservableObject {
         }
         activeSettings = response
         return response
+    }
+
+    func validateConnection() async throws -> ThirdPartyProxySettingsResponse {
+        try await query()
     }
 
     func validateVersion() async throws -> ThirdPartyProxyVersionResponse {
@@ -184,6 +203,27 @@ final class ThirdPartyProxyManager: ObservableObject {
         }
     }
 
+    @discardableResult
+    func refreshAdvancedFeatureAvailability() async -> Bool {
+        do {
+            _ = try await validateVersion()
+            moduleUpdateRecommended = false
+            return true
+        } catch {
+            moduleUpdateRecommended = true
+            RuntimeLogger.warning(
+                "APP",
+                "ThirdPartyProxy",
+                "第三方模块不支持高级功能",
+                details: [
+                    "版本检测": error.localizedDescription,
+                    "处理建议": "基础坐标功能可继续使用；更新模块后可使用运动状态模拟"
+                ]
+            )
+            return false
+        }
+    }
+
     func clear() async throws {
         let response = try await perform(action: .clear)
         guard response.success else {
@@ -192,6 +232,18 @@ final class ThirdPartyProxyManager: ObservableObject {
         activeSettings = nil
         connectionState = .connected(active: false)
         RuntimeLogger.info("APP", "ThirdPartyProxy", "第三方代理坐标已清除")
+    }
+
+    private func validatedQueryState(_ response: ThirdPartyProxySettingsResponse) throws -> Bool {
+        if response.success,
+           response.latitude != nil,
+           response.longitude != nil {
+            return true
+        }
+        if response.error?.contains("无已保存") == true {
+            return false
+        }
+        throw ThirdPartyProxyError.rejected(response.error ?? "第三方代理查询失败")
     }
 
     private enum Action {

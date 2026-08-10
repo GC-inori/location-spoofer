@@ -23,7 +23,7 @@ struct AppRemoteConfiguration: Decodable, Equatable {
     let communityPromptClients: [String]
 
     static let fallback = AppRemoteConfiguration(
-        latestVersion: "1.0.4",
+        latestVersion: "1.0.5",
         minimumSupportedVersion: "1.0.0",
         communityPromptClients: [
             ThirdPartyProxyClient.surge.rawValue,
@@ -107,87 +107,99 @@ final class AppRemoteConfigurationStore: ObservableObject {
 }
 
 enum AppRemoteConfigurationService {
-    static let configurationURL = URL(
-        string: "https://raw.githubusercontent.com/xweiba/location-spoofer/main/version.txt"
-    )!
+    static let configurationURLs = [
+        URL(
+            string: "https://gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/version.txt"
+        )!,
+        URL(
+            string: "https://raw.githubusercontent.com/xweiba/location-spoofer/main/version.txt"
+        )!
+    ]
     static let releasesURL = URL(
         string: "https://github.com/xweiba/location-spoofer/releases/latest"
     )!
 
     static func fetch() async -> AppRemoteConfiguration? {
-        let sessionConfiguration = URLSessionConfiguration.ephemeral
-        sessionConfiguration.timeoutIntervalForRequest = 1.5
-        sessionConfiguration.timeoutIntervalForResource = 2
-        sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        sessionConfiguration.waitsForConnectivity = false
-        let session = URLSession(configuration: sessionConfiguration)
+        let session = makeSession()
         defer { session.finishTasksAndInvalidate() }
 
-        var request = URLRequest(url: configurationURL)
-        request.timeoutInterval = 1.5
+        for url in configurationURLs {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 1.5
 
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
-                RuntimeLogger.warning("APP", "Update", "版本配置请求返回非 200，继续使用内置配置")
-                return nil
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    continue
+                }
+                let configuration = try AppRemoteConfiguration.decode(data)
+                RuntimeLogger.info("APP", "Update", "远程版本配置加载成功", details: [
+                    "来源": url.host ?? "未知",
+                    "最新版本": configuration.latestVersion,
+                    "最低版本": configuration.minimumSupportedVersion,
+                    "社区征集客户端数": String(configuration.communityPromptClients.count)
+                ])
+                return configuration
+            } catch {
+                RuntimeLogger.info("APP", "Update", "版本配置源不可用，尝试下一地址", details: [
+                    "来源": url.host ?? "未知",
+                    "错误": error.localizedDescription
+                ])
             }
-            let configuration = try AppRemoteConfiguration.decode(data)
-            RuntimeLogger.info("APP", "Update", "远程版本配置加载成功", details: [
-                "最新版本": configuration.latestVersion,
-                "最低版本": configuration.minimumSupportedVersion,
-                "社区征集客户端数": String(configuration.communityPromptClients.count)
-            ])
-            return configuration
-        } catch {
-            RuntimeLogger.warning("APP", "Update", "版本配置加载失败，继续使用内置配置", details: [
-                "错误": error.localizedDescription
-            ])
-            return nil
         }
+
+        RuntimeLogger.warning("APP", "Update", "版本配置加载失败，继续使用内置配置")
+        return nil
     }
 
     static func fetchReleaseNotes(version: String) async -> String? {
-        guard let url = URL(
-            string: "https://raw.githubusercontent.com/xweiba/location-spoofer/main/docs/releases/v\(version).md"
-        ) else {
-            return nil
+        let session = makeSession()
+        defer { session.finishTasksAndInvalidate() }
+
+        for url in releaseNotesURLs(version: version) {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 1.5
+
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200,
+                      let markdown = String(data: data, encoding: .utf8),
+                      let summary = releaseNotesSummary(markdown) else {
+                    continue
+                }
+                return summary
+            } catch {
+                RuntimeLogger.info("APP", "Update", "版本说明源不可用，尝试下一地址", details: [
+                    "来源": url.host ?? "未知",
+                    "版本": version,
+                    "错误": error.localizedDescription
+                ])
+            }
         }
+
+        RuntimeLogger.info("APP", "Update", "版本说明加载失败，将使用最新 Release 页面", details: [
+            "版本": version
+        ])
+        return nil
+    }
+
+    static func releaseNotesURLs(version: String) -> [URL] {
+        let path = "https://raw.githubusercontent.com/xweiba/location-spoofer/main/docs/releases/v\(version).md"
+        return [
+            URL(string: "https://gh-proxy.org/\(path)")!,
+            URL(string: path)!
+        ]
+    }
+
+    private static func makeSession() -> URLSession {
         let sessionConfiguration = URLSessionConfiguration.ephemeral
         sessionConfiguration.timeoutIntervalForRequest = 1.5
         sessionConfiguration.timeoutIntervalForResource = 2
         sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
         sessionConfiguration.waitsForConnectivity = false
-        let session = URLSession(configuration: sessionConfiguration)
-        defer { session.finishTasksAndInvalidate() }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 1.5
-
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
-                RuntimeLogger.info("APP", "Update", "版本说明不存在，将使用最新 Release 页面", details: [
-                    "版本": version
-                ])
-                return nil
-            }
-            guard let markdown = String(data: data, encoding: .utf8) else {
-                RuntimeLogger.info("APP", "Update", "版本说明编码无效，将使用最新 Release 页面", details: [
-                    "版本": version
-                ])
-                return nil
-            }
-            return releaseNotesSummary(markdown)
-        } catch {
-            RuntimeLogger.info("APP", "Update", "版本说明加载失败，将使用最新 Release 页面", details: [
-                "版本": version,
-                "错误": error.localizedDescription
-            ])
-            return nil
-        }
+        return URLSession(configuration: sessionConfiguration)
     }
 
     private static func releaseNotesSummary(_ markdown: String) -> String? {

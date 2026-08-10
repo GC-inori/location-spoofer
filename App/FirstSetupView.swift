@@ -52,6 +52,7 @@ struct FirstSetupView: View {
     @ObservedObject private var runtimeMode = ProxyRuntimeModeStore.shared
     @ObservedObject private var thirdPartyProxy = ThirdPartyProxyManager.shared
     @ObservedObject private var thirdPartyClient = ThirdPartyProxyClientStore.shared
+    @ObservedObject private var motionSimulation = MotionSimulationStore.shared
     @State private var copiedSubscriptionURL = false
     @State private var copiedMITMHostname = false
     @State private var screenshotPreview: SetupScreenshotPreview?
@@ -533,10 +534,17 @@ struct FirstSetupView: View {
                 shadowrocketHTTPSDecryptionGuide
             } else {
                 GroupBox(label: Label("第 2 步：完成 \(client.name) 配置", systemImage: "slider.horizontal.3")) {
-                    Text("请在 \(client.name) 中完成相应配置。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("请在 \(client.name) 中完成相应配置。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("配置时请使用 gs-loc.apple.com 和 gs-loc-cn.apple.com 两个域名。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        mitmHostnameCopyButton
+                    }
                 }
             }
 
@@ -556,21 +564,14 @@ struct FirstSetupView: View {
             VStack(alignment: .leading, spacing: 12) {
                 instructionRow(1, "进入“配置 → 本地文件”，找到带黄点的配置，点击右侧 i 图标。")
                 instructionRow(2, "进入“HTTPS 解密”，开启解密开关。")
-                instructionRow(3, "在域名列表中添加 gs-loc.apple.com。")
+                instructionRow(3, "在域名列表中添加 gs-loc.apple.com 和 gs-loc-cn.apple.com。")
                 setupScreenshot(
                     assetName: "ShadowrocketHTTPSDecryption",
                     title: "配置 HTTPS 解密",
-                    caption: "1 开启 HTTPS 解密，2 添加 gs-loc.apple.com，3 打开证书设置。"
+                    caption: "1 开启 HTTPS 解密，2 添加 gs-loc.apple.com 和 gs-loc-cn.apple.com，3 打开证书设置。"
                 )
 
-                Button {
-                    UIPasteboard.general.string = ThirdPartyProxyManager.interceptionHostname
-                    copiedMITMHostname = true
-                } label: {
-                    Label(copiedMITMHostname ? "已复制 gs-loc.apple.com" : "复制解密域名", systemImage: "doc.on.doc")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
+                mitmHostnameCopyButton
 
                 instructionRow(4, "按 Shadowrocket 提示生成并完成证书授权。")
                 setupScreenshot(
@@ -593,6 +594,20 @@ struct FirstSetupView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var mitmHostnameCopyButton: some View {
+        Button {
+            UIPasteboard.general.string = ThirdPartyProxyManager.interceptionHostnamesText
+            copiedMITMHostname = true
+        } label: {
+            Label(
+                copiedMITMHostname ? "已复制两个解密域名" : "复制两个解密域名",
+                systemImage: "doc.on.doc"
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
     }
 
     private func instructionRow(_ number: Int, _ text: String) -> some View {
@@ -818,16 +833,17 @@ struct FirstSetupView: View {
         Task { @MainActor in
             defer { isVerifying = false }
             do {
-                let version = try await thirdPartyProxy.validateVersion()
-                let response = try await thirdPartyProxy.query()
+                let response = try await thirdPartyProxy.validateConnection()
+                let advancedFeaturesAvailable = await thirdPartyProxy.refreshAdvancedFeatureAvailability()
+                if !advancedFeaturesAvailable {
+                    motionSimulation.setEnabled(false)
+                }
                 let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1_000)
                 RuntimeLogger.info("APP", "ThirdPartyProxy", "第三方代理连接检测通过", details: [
                     "当前客户端": client.name,
-                    "模块版本": version.moduleVersion,
-                    "协议版本": String(version.protocolVersion),
-                    "能力": version.capabilities.sorted().joined(separator: ","),
                     "请求动作": "WLOC query",
                     "连接状态": response.latitude == nil || response.longitude == nil ? "已连接，无保存坐标" : "已连接，有保存坐标",
+                    "运动状态模拟": advancedFeaturesAvailable ? "支持" : "不支持，已关闭",
                     "耗时毫秒": String(elapsedMilliseconds)
                 ])
                 onComplete()
@@ -846,14 +862,14 @@ struct FirstSetupView: View {
                         "连接状态": connectionState,
                         "耗时毫秒": String(elapsedMilliseconds),
                         "错误类型": errorType,
-                        "处理建议": "检查模块、MITM、证书和代理/VPN连接"
+                        "处理建议": ThirdPartyProxyError.recoverySuggestion(for: error)
                     ]
                 )
                 thirdPartyTestFailure = ThirdPartyConnectionTestFailure(
                     message: """
                     ======== 第三方代理连接检测 ========
                     当前客户端：\(client.name)
-                    版本接口：/wloc-settings/version
+                    配置接口：/wloc-settings/save
                     请求动作：WLOC query
                     检查范围：模块拦截、MITM、证书、代理/VPN 连接
                     连接状态：\(connectionState)
@@ -861,7 +877,7 @@ struct FirstSetupView: View {
                     耗时：\(elapsedMilliseconds) ms
                     错误类型：\(errorType)
                     错误详情：\(error.localizedDescription)
-                    处理建议：确认模块已启用，并检查 MITM、证书和代理/VPN 连接后重试。
+                    处理建议：\(ThirdPartyProxyError.recoverySuggestion(for: error))。
                     """
                 )
                 showsThirdPartyFailureLog = true

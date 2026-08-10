@@ -662,7 +662,7 @@ struct MapHomeView: View {
                             "当前客户端": thirdPartyClient.selectedClient.name,
                             "请求动作": "WLOC save",
                             "恢复状态": wasActive ? "保留原第三方坐标" : "保持未启用",
-                            "处理建议": "检查模块、MITM、证书和代理/VPN连接"
+                            "处理建议": ThirdPartyProxyError.recoverySuggestion(for: error)
                         ]
                     )
                     setup.requestThirdPartySetup(message: error.localizedDescription)
@@ -744,7 +744,7 @@ struct MapHomeView: View {
                             "当前客户端": thirdPartyClient.selectedClient.name,
                             "请求动作": "WLOC clear",
                             "恢复状态": "保留已启用状态",
-                            "处理建议": "检查模块、MITM、证书和代理/VPN连接"
+                            "处理建议": ThirdPartyProxyError.recoverySuggestion(for: error)
                         ]
                     )
                     setup.requestThirdPartySetup(message: error.localizedDescription)
