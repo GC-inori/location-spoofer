@@ -37,7 +37,19 @@ final class ThirdPartyProxyManagerTests: XCTestCase {
         XCTAssertEqual(latitude, wgs84.latitude, accuracy: 0.000_000_01)
         XCTAssertEqual(longitude, wgs84.longitude, accuracy: 0.000_000_01)
         XCTAssertEqual(values["acc"], "20")
+        XCTAssertEqual(values["motion"], "0")
         XCTAssertEqual(manager.connectionState, .connected(active: true))
+    }
+
+    func testVersionEndpointRequiresProtocolAndCapabilities() async throws {
+        let requester = FakeThirdPartyRequester(body: #"{"success":false,"error":"无已保存的坐标"}"#)
+        let manager = ThirdPartyProxyManager(requester: requester)
+
+        let version = try await manager.validateVersion()
+
+        XCTAssertEqual(requester.lastURL?.path, "/wloc-settings/version")
+        XCTAssertEqual(version.moduleVersion, "1.0.0")
+        XCTAssertTrue(version.isCompatible)
     }
 
     func testSaveRejectsCoordinateMismatchWithoutMarkingActive() async {
@@ -65,12 +77,19 @@ final class ThirdPartyProxyManagerTests: XCTestCase {
         }
     }
 
-    func testClientLinksUseOfficialUpstreamModulesAndVerificationLabels() {
+    func testClientLinksUseProjectOwnedMirrorModulesAndVerificationLabels() {
         XCTAssertNil(ThirdPartyProxyClient.shadowrocket.verificationText)
         XCTAssertTrue(ThirdPartyProxyClient.surge.verificationText?.contains("尚未验证") == true)
         XCTAssertEqual(ThirdPartyProxyClient.egern.subscriptionURL, ThirdPartyProxyClient.surge.subscriptionURL)
-        XCTAssertTrue(ThirdPartyProxyClient.stash.subscriptionURL.absoluteString.hasSuffix("/modules/wloc.stoverride"))
-        XCTAssertTrue(ThirdPartyProxyClient.shadowrocket.subscriptionURL.absoluteString.hasSuffix("/modules/wloc.module"))
+        XCTAssertTrue(ThirdPartyProxyClient.stash.subscriptionURL.absoluteString.hasPrefix(
+            "https://gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/"
+        ))
+        XCTAssertTrue(ThirdPartyProxyClient.stash.subscriptionURL.absoluteString.hasSuffix(
+            "/Resources/ThirdPartyProxyModules/wloc.stoverride"
+        ))
+        XCTAssertTrue(ThirdPartyProxyClient.shadowrocket.subscriptionURL.absoluteString.hasSuffix(
+            "/Resources/ThirdPartyProxyModules/wloc.module"
+        ))
         XCTAssertEqual(ThirdPartyProxyClient.shadowrocket.launchURL?.scheme, "shadowrocket")
         XCTAssertEqual(ThirdPartyProxyClient.surge.launchURL?.scheme, "surge")
         XCTAssertEqual(ThirdPartyProxyClient.quantumultX.launchURL?.scheme, "quantumult-x")
@@ -94,10 +113,12 @@ final class ThirdPartyProxyManagerTests: XCTestCase {
 
 private final class FakeThirdPartyRequester: ThirdPartyProxyRequesting {
     private let data: Data
+    private let versionData: Data
     private(set) var lastURL: URL?
 
     init(body: String) {
         data = Data(body.utf8)
+        versionData = Data(#"{"success":true,"moduleVersion":"1.0.0","protocolVersion":1,"capabilities":["wifi","cellTower","arpc","marker","synthetic","bare","motionSimulation"]}"#.utf8)
     }
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
@@ -108,6 +129,6 @@ private final class FakeThirdPartyRequester: ThirdPartyProxyRequesting {
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!
-        return (data, response)
+        return (request.url?.path == "/wloc-settings/version" ? versionData : data, response)
     }
 }

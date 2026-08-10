@@ -25,12 +25,21 @@ final class ProxyManager: ObservableObject {
             let lon = settings.flatMap { $0.enabled ? $0.longitude : nil } ?? 0
             let enabled = (settings?.enabled ?? false) ? CInt(1) : CInt(0)
             let accuracy = CInt(settings?.accuracy ?? 25)
+            let motionEnabled = MotionSimulationStore.shared.isEnabled ? CInt(1) : CInt(0)
             if enabled != 0 {
                 RuntimeLogger.info("APP", "坐标转换", "启动代理: 恢复上次 WGS-84 定位")
             }
             let result: UInt = authority.certPEM.withCString { cp in
                 authority.keyPEM.withCString { kp in
-                    UInt(wloccore_startproxy(UnsafeMutablePointer(mutating: cp), UnsafeMutablePointer(mutating: kp), CDouble(lat), CDouble(lon), enabled, accuracy))
+                    UInt(wloccore_startproxyv2(
+                        UnsafeMutablePointer(mutating: cp),
+                        UnsafeMutablePointer(mutating: kp),
+                        CDouble(lat),
+                        CDouble(lon),
+                        enabled,
+                        accuracy,
+                        motionEnabled
+                    ))
                 }
             }
             guard result != 0 else { CoreBridge.flushLogs(category: "Proxy"); throw ProxyError.startFailed }
@@ -58,7 +67,13 @@ final class ProxyManager: ObservableObject {
     @discardableResult
     func setCoords(lat: Double, lon: Double, enabled: Bool, accuracy: Int = 25) -> UInt64 {
         coordinateRevision &+= 1
-        wloccore_setcoords(CDouble(lat), CDouble(lon), enabled ? 1 : 0, CInt(accuracy))
+        wloccore_setpatchconfig(
+            CDouble(lat),
+            CDouble(lon),
+            enabled ? 1 : 0,
+            CInt(accuracy),
+            MotionSimulationStore.shared.isEnabled ? 1 : 0
+        )
         RuntimeLogger.info("APP", "Proxy.coords", "写入坐标", details: [
             "revision": String(coordinateRevision),
             "enabled": String(enabled),
@@ -117,6 +132,22 @@ final class ProxyManager: ObservableObject {
     func getCoords() -> (lat: Double, lon: Double, enabled: Bool) {
         let r = wloccore_getcoords()
         return (Double(r.r0), Double(r.r1), r.r2 != 0)
+    }
+
+    func applyMotionSimulation(_ enabled: Bool) {
+        MotionSimulationStore.shared.setEnabled(enabled)
+        let settings = WlocSettingsStore.load()
+        wloccore_setpatchconfig(
+            CDouble(settings?.latitude ?? 0),
+            CDouble(settings?.longitude ?? 0),
+            settings?.enabled == true ? 1 : 0,
+            CInt(settings?.accuracy ?? 25),
+            enabled ? 1 : 0
+        )
+        RuntimeLogger.info("APP", "Proxy.motion", "运动状态模拟设置已更新", details: [
+            "enabled": String(enabled)
+        ])
+        CoreBridge.flushLogs(category: "Proxy")
     }
 
     func prepareCertificateDownloadURL() async -> URL? {

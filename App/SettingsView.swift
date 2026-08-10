@@ -7,6 +7,8 @@ struct SettingsView: View {
     @ObservedObject private var runtimeMode = ProxyRuntimeModeStore.shared
     @ObservedObject private var thirdPartyProxy = ThirdPartyProxyManager.shared
     @ObservedObject private var thirdPartyClient = ThirdPartyProxyClientStore.shared
+    @ObservedObject private var motionSimulation = MotionSimulationStore.shared
+    @ObservedObject private var moduleSource = ThirdPartyModuleSourceStore.shared
     @Environment(\.dismiss) private var dismiss
     @State private var activeTip: TipKind?
     @State private var proxyOperationError = ""
@@ -60,6 +62,14 @@ struct SettingsView: View {
                     Spacer()
                     Text(virtualLocationStatusText).foregroundStyle(.secondary)
                 }
+            }
+
+            Section("定位模拟") {
+                Toggle("运动状态模拟", isOn: motionSimulationBinding)
+                    .disabled(modeOperationRunning || actions.state.isBusy || thirdPartyProxy.isRequesting)
+                Text("实验性功能，默认关闭。开启后会同时模拟定位响应中的运动状态。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if runtimeMode.mode == .thirdParty {
@@ -248,6 +258,39 @@ struct SettingsView: View {
         )
     }
 
+    private var motionSimulationBinding: Binding<Bool> {
+        Binding(
+            get: { motionSimulation.isEnabled },
+            set: { enabled in
+                if runtimeMode.mode == .localWiFi {
+                    proxy.applyMotionSimulation(enabled)
+                    return
+                }
+                guard thirdPartyProxy.activeSettings?.success == true else {
+                    motionSimulation.setEnabled(enabled)
+                    return
+                }
+                modeOperationRunning = true
+                Task { @MainActor in
+                    do {
+                        _ = try await thirdPartyProxy.updateMotionSimulation(enabled)
+                        motionSimulation.setEnabled(enabled)
+                    } catch {
+                        RuntimeLogger.error(
+                            "APP",
+                            "ThirdPartyProxy",
+                            "同步运动状态设置失败",
+                            error: error,
+                            details: ["当前客户端": thirdPartyClient.selectedClient.name]
+                        )
+                        setup.requestThirdPartySetup(message: error.localizedDescription)
+                    }
+                    modeOperationRunning = false
+                }
+            }
+        )
+    }
+
     @ViewBuilder
     private var thirdPartyConfigurationSection: some View {
         Section("第三方代理配置") {
@@ -259,6 +302,14 @@ struct SettingsView: View {
                     Text(client.name).tag(client)
                 }
             }
+
+            Toggle("使用国内镜像下载模块", isOn: Binding(
+                get: { moduleSource.useMirror },
+                set: { moduleSource.setUseMirror($0) }
+            ))
+            Text("仅影响之后复制和重新导入的模块地址；已安装模块需要重新导入后切换来源。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
 
             if let verificationText = thirdPartyClient.selectedClient.verificationText {
                 HStack {
@@ -353,6 +404,7 @@ struct SettingsView: View {
                 runtimeMode.setMode(.thirdParty)
                 if runtimeMode.isInitialized(.thirdParty) {
                     do {
+                        _ = try await thirdPartyProxy.validateVersion()
                         _ = try await thirdPartyProxy.query()
                         proxyOperationAlertTitle = "模式已切换"
                         proxyOperationError = "第三方代理模式检测通过。请关闭 Wi-Fi 中的 127.0.0.1:8888 手动代理，避免双重拦截。"
@@ -395,6 +447,7 @@ struct SettingsView: View {
         let startedAt = Date()
         Task { @MainActor in
             do {
+                _ = try await thirdPartyProxy.validateVersion()
                 _ = try await thirdPartyProxy.query()
                 RuntimeLogger.info("APP", "ThirdPartyProxy", "设置页第三方连接检测通过", details: [
                     "当前客户端": client.name,

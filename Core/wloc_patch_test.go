@@ -25,6 +25,15 @@ func testLocation(lat, lon int64, accuracy uint64) []byte {
 	return out
 }
 
+func testLocationWithMotion(lat, lon int64, accuracy, motionType, motionConfidence uint64) []byte {
+	out := testLocation(lat, lon, accuracy)
+	out = append(out, writeTag(11, wireVarint)...)
+	out = append(out, writeVarint(motionType)...)
+	out = append(out, writeTag(12, wireVarint)...)
+	out = append(out, writeVarint(motionConfidence)...)
+	return out
+}
+
 func testWifiDevice(loc []byte) []byte {
 	mac := []byte("aa:bb:cc:dd:ee:ff")
 	var out []byte
@@ -110,6 +119,66 @@ func TestPatchCellLocation(t *testing.T) {
 				t.Fatal("body was not patched")
 			}
 		})
+	}
+}
+
+func TestMotionSimulationDisabledPreservesFields(t *testing.T) {
+	original := testLocationWithMotion(100, 200, 25, 7, 88)
+	patched, changed, err := patchLocation(original, wlocCoords{
+		Latitude: 31.230416, Longitude: 121.473701, Accuracy: 50,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("coordinates were not patched")
+	}
+	fields, err := parseFields(patched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range fields {
+		if (field.num == 11 || field.num == 12) && !bytes.Contains(original, field.raw) {
+			t.Fatalf("motion field %d changed while disabled", field.num)
+		}
+	}
+}
+
+func TestMotionSimulationEnabledReplacesFields(t *testing.T) {
+	original := testLocationWithMotion(100, 200, 25, 7, 88)
+	patched, _, err := patchLocation(original, wlocCoords{
+		Latitude: 31.230416, Longitude: 121.473701, Accuracy: 50,
+		MotionSimulationEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(patched, append(writeTag(11, wireVarint), writeVarint(motionActivityType)...)) {
+		t.Fatal("motion activity type was not replaced")
+	}
+	if !bytes.Contains(patched, append(writeTag(12, wireVarint), writeVarint(motionActivityConfidence)...)) {
+		t.Fatal("motion activity confidence was not replaced")
+	}
+}
+
+func TestMotionSimulationEnabledAddsMissingFields(t *testing.T) {
+	patched, _, err := patchLocation(testLocation(100, 200, 25), wlocCoords{
+		Latitude: 31.230416, Longitude: 121.473701, Accuracy: 50,
+		MotionSimulationEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields, err := parseFields(patched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[int]int{}
+	for _, field := range fields {
+		counts[field.num]++
+	}
+	if counts[11] != 1 || counts[12] != 1 {
+		t.Fatalf("expected one inserted motion field each, got %+v", counts)
 	}
 }
 

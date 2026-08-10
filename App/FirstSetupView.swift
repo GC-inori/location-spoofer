@@ -818,10 +818,14 @@ struct FirstSetupView: View {
         Task { @MainActor in
             defer { isVerifying = false }
             do {
+                let version = try await thirdPartyProxy.validateVersion()
                 let response = try await thirdPartyProxy.query()
                 let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1_000)
                 RuntimeLogger.info("APP", "ThirdPartyProxy", "第三方代理连接检测通过", details: [
                     "当前客户端": client.name,
+                    "模块版本": version.moduleVersion,
+                    "协议版本": String(version.protocolVersion),
+                    "能力": version.capabilities.sorted().joined(separator: ","),
                     "请求动作": "WLOC query",
                     "连接状态": response.latitude == nil || response.longitude == nil ? "已连接，无保存坐标" : "已连接，有保存坐标",
                     "耗时毫秒": String(elapsedMilliseconds)
@@ -849,6 +853,7 @@ struct FirstSetupView: View {
                     message: """
                     ======== 第三方代理连接检测 ========
                     当前客户端：\(client.name)
+                    版本接口：/wloc-settings/version
                     请求动作：WLOC query
                     检查范围：模块拦截、MITM、证书、代理/VPN 连接
                     连接状态：\(connectionState)

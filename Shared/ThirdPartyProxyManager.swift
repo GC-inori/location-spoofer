@@ -6,6 +6,22 @@ struct ThirdPartyProxySettingsResponse: Decodable, Equatable {
     let latitude: Double?
     let accuracy: Int?
     let error: String?
+    let motionSimulationEnabled: Bool?
+}
+
+struct ThirdPartyProxyVersionResponse: Decodable, Equatable {
+    let success: Bool
+    let moduleVersion: String
+    let protocolVersion: Int
+    let capabilities: Set<String>
+
+    static let requiredCapabilities: Set<String> = [
+        "wifi", "cellTower", "arpc", "marker", "synthetic", "bare", "motionSimulation"
+    ]
+
+    var isCompatible: Bool {
+        success && protocolVersion >= 1 && capabilities.isSuperset(of: Self.requiredCapabilities)
+    }
 }
 
 enum ThirdPartyProxyConnectionState: Equatable {
@@ -20,6 +36,7 @@ enum ThirdPartyProxyError: LocalizedError, Equatable {
     case rejected(String)
     case coordinateMismatch
     case network(String)
+    case moduleOutdated
 
     var errorDescription: String? {
         switch self {
@@ -33,6 +50,8 @@ enum ThirdPartyProxyError: LocalizedError, Equatable {
             return "第三方代理保存的坐标与当前选点不一致"
         case .network(let message):
             return "第三方代理请求失败：\(message)"
+        case .moduleOutdated:
+            return "模块版本过低，请重新导入模块"
         }
     }
 }
@@ -48,6 +67,7 @@ final class ThirdPartyProxyManager: ObservableObject {
     static let shared = ThirdPartyProxyManager()
     static let interceptionHostname = "gs-loc.apple.com"
     static let configurationEndpoint = URL(string: "https://gs-loc.apple.com/wloc-settings/save")!
+    static let versionEndpoint = URL(string: "https://gs-loc.apple.com/wloc-settings/version")!
 
     @Published private(set) var connectionState: ThirdPartyProxyConnectionState = .unknown
     @Published private(set) var activeSettings: ThirdPartyProxySettingsResponse?
@@ -86,11 +106,13 @@ final class ThirdPartyProxyManager: ObservableObject {
     }
 
     func save(_ favorite: FavoriteLocation) async throws -> ThirdPartyProxySettingsResponse {
+        _ = try await validateVersion()
         let wgs84 = favorite.coordinatePair.wgs84
         let response = try await perform(action: .save(
             latitude: wgs84.latitude,
             longitude: wgs84.longitude,
-            accuracy: favorite.accuracy
+            accuracy: favorite.accuracy,
+            motionEnabled: MotionSimulationStore.shared.isEnabled
         ))
         guard response.success else {
             throw ThirdPartyProxyError.rejected(response.error ?? "第三方代理拒绝保存坐标")
@@ -111,6 +133,57 @@ final class ThirdPartyProxyManager: ObservableObject {
         return response
     }
 
+    func updateMotionSimulation(_ enabled: Bool) async throws -> ThirdPartyProxySettingsResponse {
+        guard let current = activeSettings,
+              let latitude = current.latitude,
+              let longitude = current.longitude else {
+            throw ThirdPartyProxyError.rejected("第三方虚拟定位尚未开启")
+        }
+        _ = try await validateVersion()
+        let response = try await perform(action: .save(
+            latitude: latitude,
+            longitude: longitude,
+            accuracy: current.accuracy ?? 25,
+            motionEnabled: enabled
+        ))
+        guard response.success else {
+            throw ThirdPartyProxyError.rejected(response.error ?? "第三方代理拒绝更新运动状态")
+        }
+        activeSettings = response
+        return response
+    }
+
+    func validateVersion() async throws -> ThirdPartyProxyVersionResponse {
+        guard !isRequesting else {
+            throw ThirdPartyProxyError.rejected("已有第三方代理请求正在执行")
+        }
+        isRequesting = true
+        defer { isRequesting = false }
+
+        var request = URLRequest(url: Self.versionEndpoint)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = 8
+        do {
+            let (data, response) = try await requester.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let version = try? JSONDecoder().decode(ThirdPartyProxyVersionResponse.self, from: data),
+                  version.isCompatible else {
+                throw ThirdPartyProxyError.moduleOutdated
+            }
+            RuntimeLogger.info("APP", "ThirdPartyProxy", "第三方模块版本检测通过", details: [
+                "模块版本": version.moduleVersion,
+                "协议版本": String(version.protocolVersion),
+                "能力": version.capabilities.sorted().joined(separator: ",")
+            ])
+            return version
+        } catch let error as ThirdPartyProxyError {
+            throw error
+        } catch {
+            throw ThirdPartyProxyError.network(error.localizedDescription)
+        }
+    }
+
     func clear() async throws {
         let response = try await perform(action: .clear)
         guard response.success else {
@@ -123,7 +196,7 @@ final class ThirdPartyProxyManager: ObservableObject {
 
     private enum Action {
         case query
-        case save(latitude: Double, longitude: Double, accuracy: Int)
+        case save(latitude: Double, longitude: Double, accuracy: Int, motionEnabled: Bool)
         case clear
     }
 
@@ -140,11 +213,15 @@ final class ThirdPartyProxyManager: ObservableObject {
             components.queryItems = [URLQueryItem(name: "action", value: "query")]
         case .clear:
             components.queryItems = [URLQueryItem(name: "action", value: "clear")]
-        case .save(let latitude, let longitude, let accuracy):
+        case .save(let latitude, let longitude, let accuracy, let motionEnabled):
             components.queryItems = [
                 URLQueryItem(name: "lon", value: String(format: "%.8f", locale: Locale(identifier: "en_US_POSIX"), longitude)),
                 URLQueryItem(name: "lat", value: String(format: "%.8f", locale: Locale(identifier: "en_US_POSIX"), latitude)),
-                URLQueryItem(name: "acc", value: String(accuracy))
+                URLQueryItem(name: "acc", value: String(accuracy)),
+                URLQueryItem(
+                    name: "motion",
+                    value: motionEnabled ? "1" : "0"
+                )
             ]
         }
         guard let url = components.url else { throw ThirdPartyProxyError.invalidResponse }
@@ -211,19 +288,26 @@ enum ThirdPartyProxyClient: String, CaseIterable, Identifiable {
         }
     }
 
+    @MainActor
     var subscriptionURL: URL {
         let url: String
+        let directory = ThirdPartyModuleSourceStore.shared.useMirror
+            ? "Resources/ThirdPartyProxyModules"
+            : "ThirdParty/WlocScripts/modules/direct"
+        let prefix = ThirdPartyModuleSourceStore.shared.useMirror
+            ? "https://gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/"
+            : "https://raw.githubusercontent.com/xweiba/location-spoofer/main/"
         switch self {
         case .surge, .egern:
-            url = "https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.sgmodule"
+            url = "\(prefix)\(directory)/wloc.sgmodule"
         case .quantumultX:
-            url = "https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.conf"
+            url = "\(prefix)\(directory)/wloc.conf"
         case .loon:
-            url = "https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.lpx"
+            url = "\(prefix)\(directory)/wloc.lpx"
         case .stash:
-            url = "https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.stoverride"
+            url = "\(prefix)\(directory)/wloc.stoverride"
         case .shadowrocket:
-            url = "https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.module"
+            url = "\(prefix)\(directory)/wloc.module"
         }
         return URL(string: url)!
     }

@@ -20,10 +20,16 @@ const (
 )
 
 type wlocCoords struct {
-	Latitude  float64
-	Longitude float64
-	Accuracy  int
+	Latitude                float64
+	Longitude               float64
+	Accuracy                int
+	MotionSimulationEnabled bool
 }
+
+const (
+	motionActivityType       = 63
+	motionActivityConfidence = 467
+)
 
 type patchStats struct {
 	WiFi      int
@@ -179,6 +185,7 @@ func patchLocation(loc []byte, c wlocCoords) ([]byte, bool, error) {
 	lon := int64(math.Round(c.Longitude * 1e8))
 	var out []byte
 	changed := false
+	hasMotionType, hasMotionConfidence := false, false
 	for _, f := range fields {
 		switch {
 		case f.num == 1 && f.wireType == wireVarint:
@@ -199,9 +206,33 @@ func patchLocation(loc []byte, c wlocCoords) ([]byte, bool, error) {
 				changed = true
 			}
 			out = append(out, raw...)
+		case c.MotionSimulationEnabled && f.num == 11 && f.wireType == wireVarint:
+			hasMotionType = true
+			raw := append(writeTag(11, wireVarint), writeVarint(motionActivityType)...)
+			if !bytes.Equal(raw, f.raw) {
+				changed = true
+			}
+			out = append(out, raw...)
+		case c.MotionSimulationEnabled && f.num == 12 && f.wireType == wireVarint:
+			hasMotionConfidence = true
+			raw := append(writeTag(12, wireVarint), writeVarint(motionActivityConfidence)...)
+			if !bytes.Equal(raw, f.raw) {
+				changed = true
+			}
+			out = append(out, raw...)
 		default:
 			out = append(out, f.raw...)
 		}
+	}
+	if c.MotionSimulationEnabled && !hasMotionType {
+		out = append(out, writeTag(11, wireVarint)...)
+		out = append(out, writeVarint(motionActivityType)...)
+		changed = true
+	}
+	if c.MotionSimulationEnabled && !hasMotionConfidence {
+		out = append(out, writeTag(12, wireVarint)...)
+		out = append(out, writeVarint(motionActivityConfidence)...)
+		changed = true
 	}
 	return out, changed, nil
 }
