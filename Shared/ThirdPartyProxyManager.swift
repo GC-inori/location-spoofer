@@ -254,6 +254,8 @@ final class ThirdPartyProxyManager: ObservableObject {
 }
 
 enum ThirdPartyProxyClient: String, CaseIterable, Identifiable {
+    static let moduleSubscriptionVersion = "1.0.0"
+
     case shadowrocket
     case surge
     case quantumultX
@@ -309,7 +311,7 @@ enum ThirdPartyProxyClient: String, CaseIterable, Identifiable {
         case .shadowrocket:
             url = "\(prefix)\(directory)/wloc.module"
         }
-        return URL(string: url)!
+        return URL(string: "\(url)?v=\(Self.moduleSubscriptionVersion)")!
     }
 
     var launchURL: URL? {

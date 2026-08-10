@@ -84,12 +84,18 @@ final class ThirdPartyProxyManagerTests: XCTestCase {
         XCTAssertTrue(ThirdPartyProxyClient.stash.subscriptionURL.absoluteString.hasPrefix(
             "https://gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/"
         ))
-        XCTAssertTrue(ThirdPartyProxyClient.stash.subscriptionURL.absoluteString.hasSuffix(
-            "/Resources/ThirdPartyProxyModules/wloc.stoverride"
-        ))
-        XCTAssertTrue(ThirdPartyProxyClient.shadowrocket.subscriptionURL.absoluteString.hasSuffix(
-            "/Resources/ThirdPartyProxyModules/wloc.module"
-        ))
+        let stashComponents = URLComponents(
+            url: ThirdPartyProxyClient.stash.subscriptionURL,
+            resolvingAgainstBaseURL: false
+        )
+        let shadowrocketComponents = URLComponents(
+            url: ThirdPartyProxyClient.shadowrocket.subscriptionURL,
+            resolvingAgainstBaseURL: false
+        )
+        XCTAssertEqual(stashComponents?.path, "/https://raw.githubusercontent.com/xweiba/location-spoofer/main/Resources/ThirdPartyProxyModules/wloc.stoverride")
+        XCTAssertEqual(shadowrocketComponents?.path, "/https://raw.githubusercontent.com/xweiba/location-spoofer/main/Resources/ThirdPartyProxyModules/wloc.module")
+        XCTAssertEqual(stashComponents?.queryItems?.first?.value, ThirdPartyProxyClient.moduleSubscriptionVersion)
+        XCTAssertEqual(shadowrocketComponents?.queryItems?.first?.value, ThirdPartyProxyClient.moduleSubscriptionVersion)
         XCTAssertEqual(ThirdPartyProxyClient.shadowrocket.launchURL?.scheme, "shadowrocket")
         XCTAssertEqual(ThirdPartyProxyClient.surge.launchURL?.scheme, "surge")
         XCTAssertEqual(ThirdPartyProxyClient.quantumultX.launchURL?.scheme, "quantumult-x")

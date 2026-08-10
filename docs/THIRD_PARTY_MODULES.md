@@ -12,6 +12,10 @@ module URL the App copies:
 - enabled by default: `gh-proxy.org` in front of GitHub Raw;
 - disabled: GitHub Raw directly.
 
+The App appends the module version as a query parameter, such as `?v=1.0.0`.
+Increment this value whenever an existing module path changes so proxy clients
+do not reuse a previously cached subscription body.
+
 | Module file | Client |
 |---|---|
 | `wloc.module` | Shadowrocket |
