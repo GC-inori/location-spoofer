@@ -204,9 +204,7 @@ struct MapHomeView: View {
                 onUserZoomChanged: { distance in
                     ViewportStore.save(distance)
                     LastCoordinateStore.updateZoom(distance)
-                },
-                onZoomIn: { mapState.zoom(by: 0.5) },
-                onZoomOut: { mapState.zoom(by: 2) }
+                }
             )
             .ignoresSafeArea(.container)
 

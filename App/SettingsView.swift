@@ -34,7 +34,6 @@ struct SettingsView: View {
     @State private var copiedClient: ThirdPartyProxyClient?
     @State private var copiedMITMHostnames = false
     @State private var showCertificateResetConfirmation = false
-    @State private var githubDestination: SafariDestination?
     @State private var isCheckingForUpdates = false
     @State private var updateCheckResult: UpdateCheckResult?
 
@@ -163,64 +162,6 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-
-            Section("支持") {
-                NavigationLink {
-                    BugReportView(setup: setup)
-                } label: {
-                    Label("报告 Bug", systemImage: "ladybug")
-                }
-
-                Button {
-                    githubDestination = SafariDestination(url: GitHubSubmission.usageHelpURL)
-                } label: {
-                    Label("使用帮助", systemImage: "questionmark.circle")
-                }
-
-                Button {
-                    githubDestination = SafariDestination(url: GitHubSubmission.featureRequestURL)
-                } label: {
-                    Label("功能建议", systemImage: "lightbulb")
-                }
-
-                if runtimeMode.mode == .thirdParty {
-                    Button {
-                        UIPasteboard.general.string = GitHubSubmission.communityContributionTemplate(
-                            for: thirdPartyClient.selectedClient,
-                            systemVersion: UIDevice.current.systemVersion
-                        )
-                        githubDestination = SafariDestination(
-                            url: GitHubSubmission.communityContributionURL
-                        )
-                    } label: {
-                        Label("分享第三方配置", systemImage: "square.and.arrow.up")
-                    }
-                }
-            }
-
-            Section("关于") {
-                Button {
-                    if let url = URL(string: "https://github.com/GC-inori/location-spoofer") {
-                        UIApplication.shared.open(url)
-                    }
-                } label: {
-                    Label("GC-inori/location-spoofer", systemImage: "link")
-                }
-                Text("如果觉得好用，欢迎去 GitHub 给项目点个 Star")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("致谢") {
-                Button {
-                    if let url = URL(string: "https://github.com/Yu9191/wloc") {
-                        UIApplication.shared.open(url)
-                    }
-                } label: {
-                    Label("核心定位改写逻辑移植自 Yu9191/wloc", systemImage: "heart.fill")
-                        .foregroundStyle(.pink)
-                }
-            }
         }
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
@@ -229,10 +170,6 @@ struct SettingsView: View {
         }
         .sheet(item: $activeTip) { kind in
             TipSheetView(kind: kind)
-        }
-        .sheet(item: $githubDestination) { destination in
-            SafariView(url: destination.url)
-                .ignoresSafeArea()
         }
         .alert(proxyOperationAlertTitle, isPresented: Binding(
             get: { !proxyOperationError.isEmpty },

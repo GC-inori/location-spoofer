@@ -7,13 +7,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        请优先在 App 的“设置 → 支持 → 报告 Bug”中生成诊断报告，再粘贴到下方字段。
+        请按下方占位格式填写诊断报告。可在 App 的「日志」页复制脱敏后的运行日志。
         提交前请移除真实位置、账号、订阅、密码、证书私钥和其他敏感信息。
   - type: textarea
     id: app-report
     attributes:
       label: App 生成的诊断报告
-      description: 粘贴 App 自动复制的完整报告；如果无法进入 App，请按占位格式手动填写。
+      description: 请按占位格式填写。可从 App「日志」页复制脱敏后的运行日志；如果无法进入 App，请手动补充环境信息。
       placeholder: |
         ### 环境信息
         App 版本:

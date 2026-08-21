@@ -123,24 +123,24 @@ grep -Fq 'App 生成的诊断报告' "$BUG_REPORT" \
   || fail "the App must tell users where to paste the generated report"
 grep -Fq '第三方客户端:' "$BUG_REPORT" \
   || fail "the generated report must identify the selected third-party client"
-grep -Fq 'Label("报告 Bug"' "$SETTINGS" \
-  || fail "Settings must identify the support action as a bug report"
-for action in '使用帮助' '功能建议' '分享第三方配置'; do
-  grep -Fq "Label(\"$action\"" "$SETTINGS" \
-    || fail "Settings support must expose: $action"
+for section in '支持' '关于' '致谢'; do
+  ! grep -q "Section(\"$section\")" "$SETTINGS" \
+    || fail "Settings must not retain the $section section"
 done
-grep -A8 'Label("分享第三方配置"' "$SETTINGS" >/dev/null \
-  || fail "Settings must retain the manual third-party sharing action"
-grep -q 'GitHubSubmission.communityContributionTemplate' "$SETTINGS" \
-  || fail "Settings manual sharing must copy the shared contribution template"
-grep -q 'SafariView(url: destination.url)' "$SETTINGS" \
-  || fail "Settings GitHub support actions must use the in-App Safari view"
+for action in '报告 Bug' '使用帮助' '功能建议' '分享第三方配置'; do
+  ! grep -Fq "Label(\"$action\"" "$SETTINGS" \
+    || fail "Settings must not expose: $action"
+done
+! grep -q 'SafariView(url: destination.url)' "$SETTINGS" \
+  || fail "Settings must not open GitHub support actions"
+! grep -q 'githubDestination' "$SETTINGS" \
+  || fail "Settings must not retain GitHub Safari destinations"
 test -s "$ISSUE_FORM" \
   || fail "the repository must provide a bug report Issue form"
 grep -Fq 'label: App 生成的诊断报告' "$ISSUE_FORM" \
   || fail "the Issue form must expose the field named by the App"
-grep -Fq '设置 → 支持 → 报告 Bug' "$ISSUE_FORM" \
-  || fail "the Issue form must point users to the matching App workflow"
+grep -Fq '日志' "$ISSUE_FORM" \
+  || fail "the Issue form must point users to App logs instead of the removed Settings support entry"
 grep -Fq 'label: 我已移除真实位置、认证信息、订阅地址、证书私钥和其他敏感信息' "$ISSUE_FORM" \
   || fail "the Issue form must require privacy confirmation"
 grep -Fq 'blank_issues_enabled: false' "$ISSUE_CONFIG" \

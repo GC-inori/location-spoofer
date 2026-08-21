@@ -39,8 +39,6 @@ struct MapViewRepresentable: UIViewRepresentable {
     let onViewportChanged: (CLLocationDistance) -> Void
     let onMapTap: (CLLocationCoordinate2D) -> Void
     let onUserZoomChanged: ((CLLocationDistance) -> Void)?
-    var onZoomIn: (() -> Void)?
-    var onZoomOut: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -48,6 +46,7 @@ struct MapViewRepresentable: UIViewRepresentable {
         let map = MKMapView()
         map.delegate = context.coordinator
         map.showsUserLocation = true
+        map.showsCompass = false
         let initialDistance = max(50, initialViewportMeters)
         RuntimeLogger.info("APP", "地图", "makeUIView", details: [
             "zoom": String(initialDistance),
@@ -79,60 +78,13 @@ struct MapViewRepresentable: UIViewRepresentable {
         map.addSubview(pin)
         context.coordinator.centerPin = pin
 
-        // Zoom controls — UIKit subviews inside MKMapView, move with the map
-        let zoomStack = UIStackView()
-        zoomStack.axis = .vertical
-        zoomStack.spacing = 0
-        zoomStack.translatesAutoresizingMaskIntoConstraints = false
-        zoomStack.alignment = .center
-        zoomStack.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.8)
-        zoomStack.layer.cornerRadius = 13
-        zoomStack.layer.shadowColor = UIColor.black.cgColor
-        zoomStack.layer.shadowOpacity = 0.18
-        zoomStack.layer.shadowRadius = 7
-        zoomStack.layer.shadowOffset = CGSize(width: 0, height: 3)
-
-        let zoomInBtn = UIButton(type: .system)
-        zoomInBtn.setImage(UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)), for: .normal)
-        zoomInBtn.addTarget(context.coordinator, action: #selector(Coordinator.zoomInTapped), for: .touchUpInside)
-        zoomInBtn.heightAnchor.constraint(equalToConstant: 52).isActive = true
-        zoomInBtn.widthAnchor.constraint(equalToConstant: 52).isActive = true
-
-        let zoomLabel = UILabel()
-        let roundedDesc = UIFont.systemFont(ofSize: 9, weight: .semibold).fontDescriptor.withDesign(.rounded)
-        zoomLabel.font = roundedDesc.flatMap { UIFont(descriptor: $0, size: 9) } ?? .systemFont(ofSize: 9, weight: .semibold)
-        zoomLabel.textColor = .secondaryLabel
-        zoomLabel.textAlignment = .center
-        zoomLabel.adjustsFontSizeToFitWidth = true
-        zoomLabel.minimumScaleFactor = 0.7
-        zoomLabel.text = MapZoomMath.viewportScaleLabel(distanceMeters: initialDistance)
-        zoomLabel.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        context.coordinator.zoomLabel = zoomLabel
-
-        let zoomOutBtn = UIButton(type: .system)
-        zoomOutBtn.setImage(UIImage(systemName: "minus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)), for: .normal)
-        zoomOutBtn.addTarget(context.coordinator, action: #selector(Coordinator.zoomOutTapped), for: .touchUpInside)
-        zoomOutBtn.heightAnchor.constraint(equalToConstant: 52).isActive = true
-        zoomOutBtn.widthAnchor.constraint(equalToConstant: 52).isActive = true
-
-        let sep1 = UIView(); sep1.translatesAutoresizingMaskIntoConstraints = false
-        sep1.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
-        sep1.backgroundColor = .separator
-        sep1.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        let sep2 = UIView(); sep2.translatesAutoresizingMaskIntoConstraints = false
-        sep2.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
-        sep2.backgroundColor = .separator
-        sep2.widthAnchor.constraint(equalToConstant: 28).isActive = true
-
-        zoomStack.addArrangedSubview(zoomInBtn)
-        zoomStack.addArrangedSubview(sep1)
-        zoomStack.addArrangedSubview(zoomLabel)
-        zoomStack.addArrangedSubview(sep2)
-        zoomStack.addArrangedSubview(zoomOutBtn)
-        map.addSubview(zoomStack)
+        let compass = MKCompassButton(mapView: map)
+        compass.compassVisibility = .adaptive
+        compass.translatesAutoresizingMaskIntoConstraints = false
+        map.addSubview(compass)
         NSLayoutConstraint.activate([
-            zoomStack.leadingAnchor.constraint(equalTo: map.safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            zoomStack.topAnchor.constraint(equalTo: map.safeAreaLayoutGuide.topAnchor, constant: 130),
+            compass.leadingAnchor.constraint(equalTo: map.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            compass.topAnchor.constraint(equalTo: map.safeAreaLayoutGuide.topAnchor, constant: 72)
         ])
 
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
@@ -157,7 +109,6 @@ struct MapViewRepresentable: UIViewRepresentable {
         private var activeCommandIsZoom = false
         private var regionChangeWasUserDriven = false
         private var isPinchZoom = false
-        weak var zoomLabel: UILabel?
         weak var centerPin: UIImageView?
         private let pinSize: CGFloat = 38
         // 蓝点实际大小从 MKUserLocationView 取，默认 20pt
@@ -168,9 +119,6 @@ struct MapViewRepresentable: UIViewRepresentable {
         deinit {
             keyboardObserverTokens.forEach(NotificationCenter.default.removeObserver)
         }
-
-        @objc func zoomInTapped() { parent.onZoomIn?() }
-        @objc func zoomOutTapped() { parent.onZoomOut?() }
 
         init(parent: MapViewRepresentable) {
             self.parent = parent
@@ -285,7 +233,6 @@ struct MapViewRepresentable: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             let distance = visibleVerticalDistance(in: mapView)
             parent.onViewportChanged(distance)
-            zoomLabel?.text = MapZoomMath.viewportScaleLabel(distanceMeters: distance)
             updatePinPosition(on: mapView)
             // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
             if let ul = visibleUserLocationSample(mapView.userLocation),

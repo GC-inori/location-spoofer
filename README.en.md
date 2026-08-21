@@ -389,7 +389,7 @@ Contributions are welcome for:
 - Documentation improvements;
 - Additional tests.
 
-For bugs, generate a report from **Settings → Support → Report Bug** in the App whenever possible. The report includes:
+For bugs, use the GitHub Issue form and include:
 
 - iOS version;
 - App version;
@@ -397,9 +397,9 @@ For bugs, generate a report from **Settings → Support → Report Bug** in the 
 - Selected third-party client;
 - Whether the issue is reproducible;
 - Problem description;
-- Sanitized runtime logs;
+- Sanitized runtime logs (copy them from the App **Logs** page);
 
-Paste it into the **App-generated diagnostic report** field in the GitHub Issue Form.
+Paste that information into the **App-generated diagnostic report** field.
 
 ## Documentation
 

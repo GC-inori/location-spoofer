@@ -377,7 +377,7 @@ dist/PaopaoLocationSpoofer-unsigned.ipa
 - 文档改进；
 - 测试补充。
 
-提交 Bug 时建议优先通过 App 的“设置 → 支持 → 报告 Bug”生成报告。报告包含：
+提交 Bug 时请使用 GitHub Issue 表单，并尽量提供：
 
 - iOS 版本；
 - App 版本；
@@ -385,9 +385,9 @@ dist/PaopaoLocationSpoofer-unsigned.ipa
 - 当前第三方客户端；
 - 是否可以稳定复现；
 - 问题描述；
-- 脱敏后的运行日志；
+- 脱敏后的运行日志（可在 App「日志」页复制）；
 
-GitHub Issue Form 中的“App 生成的诊断报告”字段与 App 复制内容一一对应。
+GitHub Issue Form 中的“App 生成的诊断报告”字段用于粘贴上述信息。
 
 ## 文档
 
