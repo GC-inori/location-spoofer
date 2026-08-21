@@ -81,7 +81,10 @@ final class ThirdPartyProxyManager: ObservableObject {
     static let shared = ThirdPartyProxyManager()
     static let interceptionHostnames = [
         "gs-loc.apple.com",
-        "gs-loc-cn.apple.com"
+        "gs-loc-cn.apple.com",
+        "gsp-ssl.ls.apple.com",
+        "bluedot.is.autonavi.com",
+        "bluedot.is.autonavi.com.gds.alibabadns.com"
     ]
     static let interceptionHostnamesText = interceptionHostnames.joined(separator: ", ")
     static let configurationEndpoint = URL(string: "https://gs-loc.apple.com/wloc-settings/save")!
@@ -306,7 +309,7 @@ final class ThirdPartyProxyManager: ObservableObject {
 }
 
 enum ThirdPartyProxyClient: String, CaseIterable, Identifiable {
-    static let moduleSubscriptionVersion = "1.0.0"
+    static let moduleSubscriptionVersion = "1.0.6"
 
     case shadowrocket
     case surge
@@ -349,8 +352,8 @@ enum ThirdPartyProxyClient: String, CaseIterable, Identifiable {
             ? "Resources/ThirdPartyProxyModules"
             : "ThirdParty/WlocScripts/modules/direct"
         let prefix = ThirdPartyModuleSourceStore.shared.useMirror
-            ? "https://gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/"
-            : "https://raw.githubusercontent.com/xweiba/location-spoofer/main/"
+            ? "https://gh-proxy.org/https://raw.githubusercontent.com/GC-inori/location-spoofer/main/"
+            : "https://raw.githubusercontent.com/GC-inori/location-spoofer/main/"
         switch self {
         case .surge, .egern:
             url = "\(prefix)\(directory)/wloc.sgmodule"

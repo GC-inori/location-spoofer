@@ -5,7 +5,8 @@ await mkdir(new URL("./dist/v1/", import.meta.url), { recursive: true });
 
 for (const [entry, outfile] of [
   ["src/response-entry.js", "dist/v1/wloc.js"],
-  ["src/settings-entry.js", "dist/v1/wloc-settings.js"]
+  ["src/settings-entry.js", "dist/v1/wloc-settings.js"],
+  ["src/prepare-entry.js", "dist/v1/wloc-prepare.js"]
 ]) {
   await build({
     entryPoints: [entry],

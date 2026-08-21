@@ -200,11 +200,11 @@ struct SettingsView: View {
 
             Section("关于") {
                 Button {
-                    if let url = URL(string: "https://github.com/xweiba/location-spoofer") {
+                    if let url = URL(string: "https://github.com/GC-inori/location-spoofer") {
                         UIApplication.shared.open(url)
                     }
                 } label: {
-                    Label("xweiba/location-spoofer", systemImage: "link")
+                    Label("GC-inori/location-spoofer", systemImage: "link")
                 }
                 Text("如果觉得好用，欢迎去 GitHub 给项目点个 Star")
                     .font(.caption2)
@@ -469,7 +469,7 @@ struct SettingsView: View {
                 UIPasteboard.general.string = ThirdPartyProxyManager.interceptionHostnamesText
                 copiedMITMHostnames = true
             } label: {
-                Label(copiedMITMHostnames ? "已复制两个解密域名" : "复制两个解密域名", systemImage: "doc.on.doc")
+                Label(copiedMITMHostnames ? "已复制解密域名" : "复制解密域名", systemImage: "doc.on.doc")
             }
 
             Button {
@@ -493,7 +493,7 @@ struct SettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
 
-            Text("复制模块订阅地址后，在对应代理客户端中添加模块/重写订阅，并为 gs-loc.apple.com 和 gs-loc-cn.apple.com 启用 MITM。第三方客户端保存坐标后，即使关闭本 App，坐标仍由代理客户端持久化并继续生效。")
+            Text("复制模块订阅地址后，在对应代理客户端中添加模块/重写订阅，并为 gs-loc.apple.com、gs-loc-cn.apple.com、gsp-ssl.ls.apple.com、bluedot.is.autonavi.com 启用 MITM。第三方客户端保存坐标后，即使关闭本 App，坐标仍由代理客户端持久化并继续生效。")
                 .font(.footnote).foregroundStyle(.secondary)
         }
     }
@@ -531,7 +531,7 @@ struct SettingsView: View {
         return """
         App 在设备本地运行一个代理服务器（127.0.0.1:8888）。
 
-        通过 WiFi 手动代理配置，让系统发往 gs-loc.apple.com 和 gs-loc-cn.apple.com 的定位请求经过这个本地代理。代理使用已安装的 CA 证书对 HTTPS 流量做中间人解密，把 Apple 返回的定位坐标改写为你设置的虚拟坐标，再加密返回给系统，从而实现虚拟定位。
+        通过 WiFi 手动代理配置，让系统发往 gs-loc.apple.com、gs-loc-cn.apple.com、gsp-ssl.ls.apple.com 和 bluedot.is.autonavi.com 的定位请求经过这个本地代理。代理使用已安装的 CA 证书对 HTTPS 流量做中间人解密，把 Apple 返回的定位坐标改写为你设置的虚拟坐标，再加密返回给系统，从而实现虚拟定位。
         """
     }
 

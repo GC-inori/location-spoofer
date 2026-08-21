@@ -464,7 +464,7 @@ struct FirstSetupView: View {
 
                     Text("适配要求")
                         .font(.subheadline.bold())
-                    Text("客户端需要支持请求脚本、持久化存储、HTTP 200 JSON 响应、Apple WLOC 响应脚本，以及 gs-loc.apple.com / gs-loc-cn.apple.com 的 HTTPS 解密。保存接口和 WLOC 响应脚本必须读取同一份持久化数据。")
+                    Text("客户端需要支持请求脚本、持久化存储、HTTP 200 JSON 响应、Apple WLOC 响应脚本，以及 gs-loc.apple.com / gs-loc-cn.apple.com、gsp-ssl.ls.apple.com、bluedot.is.autonavi.com 的 HTTPS 解密。保存接口和 WLOC 响应脚本必须读取同一份持久化数据。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -539,7 +539,7 @@ struct FirstSetupView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("配置时请使用 gs-loc.apple.com 和 gs-loc-cn.apple.com 两个域名。")
+                        Text("配置时请使用 gs-loc.apple.com 和 gs-loc-cn.apple.com，并补充 gsp-ssl.ls.apple.com 与 bluedot.is.autonavi.com。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -564,11 +564,11 @@ struct FirstSetupView: View {
             VStack(alignment: .leading, spacing: 12) {
                 instructionRow(1, "进入“配置 → 本地文件”，找到带黄点的配置，点击右侧 i 图标。")
                 instructionRow(2, "进入“HTTPS 解密”，开启解密开关。")
-                instructionRow(3, "在域名列表中添加 gs-loc.apple.com 和 gs-loc-cn.apple.com。")
+                instructionRow(3, "在域名列表中添加 gs-loc.apple.com 和 gs-loc-cn.apple.com，以及 gsp-ssl.ls.apple.com、bluedot.is.autonavi.com。")
                 setupScreenshot(
                     assetName: "ShadowrocketHTTPSDecryption",
                     title: "配置 HTTPS 解密",
-                    caption: "1 开启 HTTPS 解密，2 添加 gs-loc.apple.com 和 gs-loc-cn.apple.com，3 打开证书设置。"
+                    caption: "1 开启 HTTPS 解密，2 添加 gs-loc.apple.com 和 gs-loc-cn.apple.com 等定位域名，3 打开证书设置。"
                 )
 
                 mitmHostnameCopyButton
@@ -602,7 +602,7 @@ struct FirstSetupView: View {
             copiedMITMHostname = true
         } label: {
             Label(
-                copiedMITMHostname ? "已复制两个解密域名" : "复制两个解密域名",
+                copiedMITMHostname ? "已复制解密域名" : "复制解密域名",
                 systemImage: "doc.on.doc"
             )
             .frame(maxWidth: .infinity)

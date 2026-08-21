@@ -4,6 +4,7 @@
 
 ## 已发布
 
+- [v1.0.6](https://github.com/GC-inori/location-spoofer/releases/tag/v1.0.6) — 2026-08-21
 - [v1.0.5](https://github.com/xweiba/location-spoofer/releases/tag/v1.0.5) — 2026-08-10
 - [v1.0.4](https://github.com/xweiba/location-spoofer/releases/tag/v1.0.4) — 2026-08-09
 - [v1.0.3](https://github.com/xweiba/location-spoofer/releases/tag/v1.0.3) — 2026-08-09

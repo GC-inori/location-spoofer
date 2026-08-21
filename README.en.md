@@ -12,7 +12,7 @@ responses in a controlled test environment.
 [![iOS 15+](https://img.shields.io/badge/iOS-15%2B-111111?logo=apple)](project.yml)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-F05138)](project.yml)
 [![Go 1.23+](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go)](Core/go.mod)
-[![Version](https://img.shields.io/badge/version-v1.0.5-2563EB)](docs/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.0.6-2563EB)](docs/CHANGELOG.md)
 
 [Features](#feature-overview) ·
 [How It Works](#how-it-works) ·
@@ -254,8 +254,8 @@ Release assets are unsigned IPA files and must be installed on an iPhone with a 
 
 1. **Enable sideloading support**: On iOS 16 or newer, open Settings → Privacy & Security → Developer Mode, enable it,
    then restart and confirm when prompted. iOS 15 does not have this switch, so skip this step.
-2. **Download the IPA**: Open this project's [Releases](https://github.com/xweiba/location-spoofer/releases) and download
-   the latest `PaopaoLocationSpoofer-unsigned.ipa`.
+2. **Download the IPA**: Open this project's [Releases](https://github.com/GC-inori/location-spoofer/releases) and download
+   the latest `Location-Spoofer-unsigned.ipa`.
 3. **Prepare signing software**: Download the appropriate Impactor build from
    [Impactor Releases](https://github.com/claration/Impactor/releases). Other tools that support self-signing and installing
    IPA files, such as Aisi Assistant, may also be used.
@@ -334,7 +334,7 @@ Source builds require:
 Building the iOS app directly on Windows is not supported.
 
 ```bash
-git clone https://github.com/xweiba/location-spoofer.git
+git clone https://github.com/GC-inori/location-spoofer.git
 cd location-spoofer
 
 ./build.sh
@@ -442,6 +442,7 @@ guarantee for every app or release.
 
 The core location-response handling approach, Go implementation, and third-party modules are based on:
 
+- [xweiba/location-spoofer](https://github.com/xweiba/location-spoofer)
 - [Yu9191/wloc](https://github.com/Yu9191/wloc)
 - [ios-location-spoofer](https://github.com/mekos2772/ios-location-spoofer)
 

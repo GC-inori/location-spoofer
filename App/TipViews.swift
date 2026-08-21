@@ -70,7 +70,7 @@ struct ActivationTipContent: View {
         }
 
         GroupBox(label: Label("还是无法生效？", systemImage: "exclamationmark.triangle")) {
-            Text("操作到第 3 步时关机重启，开机后从第 4 步继续。这样能彻底清除系统缓存的定位数据。")
+            Text("iOS 16–18 通常关开定位或按下面步骤即可刷新。iOS 26 及更新版本会把真实定位长时间缓存在内存里，关开飞行模式往往不够，需要关机重启后再从第 4 步继续。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)

@@ -57,6 +57,14 @@ func drainLogs() string {
 	return out
 }
 
+var wlocHosts = map[string]struct{}{
+	"gs-loc.apple.com": {},
+	"gs-loc-cn.apple.com": {},
+	"gsp-ssl.ls.apple.com": {},
+	"bluedot.is.autonavi.com": {},
+	"bluedot.is.autonavi.com.gds.alibabadns.com": {},
+}
+
 func isWlocHost(host string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if strings.Contains(host, ":") {
@@ -64,7 +72,18 @@ func isWlocHost(host string) bool {
 			host = h
 		}
 	}
-	return host == "gs-loc.apple.com" || host == "gs-loc-cn.apple.com"
+	_, ok := wlocHosts[host]
+	return ok
+}
+
+func prepareWlocRequest(req *http.Request) {
+	if req == nil || req.URL == nil {
+		return
+	}
+	if !isWlocHost(req.Host) || req.URL.Path != "/clls/wloc" {
+		return
+	}
+	req.Header.Set("Accept-Encoding", "identity")
 }
 
 func newProxy(cert *tls.Certificate) *goproxy.ProxyHttpServer {
@@ -156,7 +175,12 @@ func newProxy(cert *tls.Certificate) *goproxy.ProxyHttpServer {
 	proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		// Do not buffer or log arbitrary global-proxy traffic. Keep requests streaming
 		// and do not persist unrelated request content in diagnostics.
-		return serveLocalRequests(req, ctx)
+		req, resp := serveLocalRequests(req, ctx)
+		if resp != nil {
+			return req, resp
+		}
+		prepareWlocRequest(req)
+		return req, nil
 	})
 	proxy.OnResponse().DoFunc(patchWlocResponse)
 	return proxy

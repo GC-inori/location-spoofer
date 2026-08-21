@@ -12,7 +12,7 @@
 [![iOS 15+](https://img.shields.io/badge/iOS-15%2B-111111?logo=apple)](project.yml)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-F05138)](project.yml)
 [![Go 1.23+](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go)](Core/go.mod)
-[![Version](https://img.shields.io/badge/version-v1.0.5-2563EB)](docs/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.0.6-2563EB)](docs/CHANGELOG.md)
 
 [功能概览](#功能概览) ·
 [工作原理](#工作原理) ·
@@ -244,8 +244,8 @@ Release 附件是未签名 IPA，需要使用自签工具安装到 iPhone：
 
 1. **开启自签支持**：iOS 16 及以上版本前往“设置 → 隐私与安全性 → 开发者模式”，开启后按系统提示重启并
    确认；iOS 15 没有此开关，可跳过本步。
-2. **下载 IPA**：前往本项目的 [Releases](https://github.com/xweiba/location-spoofer/releases)，下载最新的
-   `PaopaoLocationSpoofer-unsigned.ipa`。
+2. **下载 IPA**：前往本项目的 [Releases](https://github.com/GC-inori/location-spoofer/releases)，下载最新的
+   `Location-Spoofer-unsigned.ipa`。
 3. **准备自签软件**：前往 [Impactor Releases](https://github.com/claration/Impactor/releases) 下载对应系统
    版本的 Impactor；也可以使用爱思助手等支持 IPA 自签安装的软件。
 4. **连接并安装**：使用 USB 数据线连接 iPhone 与电脑，在手机上选择“信任此电脑”，然后在自签软件中选择
@@ -322,7 +322,7 @@ docs/       构建、模块和版本文档
 当前项目不支持在 Windows 上直接构建 iOS 应用。
 
 ```bash
-git clone https://github.com/xweiba/location-spoofer.git
+git clone https://github.com/GC-inori/location-spoofer.git
 cd location-spoofer
 
 ./build.sh
@@ -430,6 +430,7 @@ GitHub Issue Form 中的“App 生成的诊断报告”字段与 App 复制内�
 
 核心定位响应处理思路、Go 实现和第三方模块参考自：
 
+- [xweiba/location-spoofer](https://github.com/xweiba/location-spoofer)
 - [Yu9191/wloc](https://github.com/Yu9191/wloc)
 - [ios-location-spoofer](https://github.com/mekos2772/ios-location-spoofer)
 

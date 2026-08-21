@@ -348,6 +348,41 @@ func TestServeLocalRequestsKeepsUnrelatedRequestBodyStreaming(t *testing.T) {
 	}
 }
 
+func TestIsWlocHostCoversAppleAndAmapEndpoints(t *testing.T) {
+	hosts := []string{
+		"gs-loc.apple.com",
+		"gs-loc-cn.apple.com:443",
+		"gsp-ssl.ls.apple.com",
+		"bluedot.is.autonavi.com",
+		"bluedot.is.autonavi.com.gds.alibabadns.com",
+	}
+	for _, host := range hosts {
+		if !isWlocHost(host) {
+			t.Fatalf("expected WLOC host %q", host)
+		}
+	}
+	if isWlocHost("example.com") {
+		t.Fatal("unrelated host must not be treated as WLOC")
+	}
+}
+
+func TestPrepareWlocRequestDisablesCompression(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://bluedot.is.autonavi.com/clls/wloc", nil)
+	req.Host = "bluedot.is.autonavi.com"
+	req.Header.Set("Accept-Encoding", "gzip")
+	prepareWlocRequest(req)
+	if got := req.Header.Get("Accept-Encoding"); got != "identity" {
+		t.Fatalf("Accept-Encoding = %q", got)
+	}
+
+	other := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+	other.Header.Set("Accept-Encoding", "gzip")
+	prepareWlocRequest(other)
+	if got := other.Header.Get("Accept-Encoding"); got != "gzip" {
+		t.Fatalf("unrelated request was modified: %q", got)
+	}
+}
+
 func TestCoordsEndpointReturnsAtomicSnapshot(t *testing.T) {
 	stateMu.Lock()
 	previousLat, previousLon := currentLat, currentLon

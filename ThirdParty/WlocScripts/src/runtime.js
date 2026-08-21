@@ -1,4 +1,4 @@
-export const MODULE_VERSION = "1.0.0";
+export const MODULE_VERSION = "1.0.6";
 export const PROTOCOL_VERSION = 1;
 export const CAPABILITIES = [
   "wifi", "cellTower", "arpc", "marker", "synthetic", "bare", "motionSimulation"
@@ -66,6 +66,21 @@ export function finishBinary(bytes) {
 
 export function finishPassthrough() {
   $done({});
+}
+
+export function finishPreparedRequest() {
+  const headers = {};
+  const incoming = typeof $request === "undefined" ? null : $request;
+  const source = incoming && incoming.headers ? incoming.headers : {};
+  const keys = Object.keys(source);
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    if (key.toLowerCase() !== "accept-encoding") {
+      headers[key] = source[key];
+    }
+  }
+  headers["Accept-Encoding"] = "identity";
+  $done({ headers: headers });
 }
 
 export function finishJSON(value) {

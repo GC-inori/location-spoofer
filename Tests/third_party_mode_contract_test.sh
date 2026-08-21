@@ -44,6 +44,12 @@ for file in wloc.module wloc.sgmodule wloc.conf wloc.lpx wloc.stoverride; do
     || fail "$file must include gs-loc.apple.com in its MITM hostnames"
   grep -q 'gs-loc-cn.apple.com' "$MODULES/$file" \
     || fail "$file must include gs-loc-cn.apple.com in its MITM hostnames"
+  grep -q 'wloc-prepare.js' "$MODULES/$file" \
+    || fail "$file must include the WLOC prepare script"
+  grep -q 'gsp-ssl.ls.apple.com' "$MODULES/$file" \
+    || fail "$file must include gsp-ssl.ls.apple.com in its MITM hostnames"
+  grep -q 'bluedot.is.autonavi.com' "$MODULES/$file" \
+    || fail "$file must include bluedot.is.autonavi.com in its MITM hostnames"
 done
 
 grep -q 'wloc.sgmodule' "$MANAGER" || fail "Surge/Egern module mapping is missing"
@@ -52,7 +58,7 @@ grep -q 'shadowrocket://' "$MANAGER" || fail "Shadowrocket launch URL is missing
 for scheme in surge quantumult-x loon stash egern; do
   grep -q "${scheme}://" "$MANAGER" || fail "$scheme launch URL is missing"
 done
-grep -q '复制两个解密域名' "$SETUP" || fail "all clients must expose both MITM hostnames"
+grep -q '复制解密域名' "$SETUP" || fail "all clients must expose MITM hostnames"
 grep -q 'gs-loc.apple.com 和 gs-loc-cn.apple.com' "$SETUP" \
   || fail "setup guidance must name both Apple location hostnames"
 grep -q 'ThirdPartyProxyManager.interceptionHostnamesText' "$SETUP" \
@@ -155,7 +161,7 @@ test -s "$ROOT/docs/onboarding-screenshots/shadowrocket/shadowrocket-module-impo
 grep -q 'presentSuccessfulOperationTip(.activation)' "$ROOT/App/MapHomeView.swift" || fail "third-party save must present the activation tip"
 grep -q 'presentSuccessfulOperationTip(.deactivation)' "$ROOT/App/MapHomeView.swift" || fail "third-party clear must present the deactivation tip"
 grep -q 'if spoofState == .active' "$ROOT/App/MapHomeView.swift" || fail "manual help must follow the shared spoof state"
-grep -q 'MARKETING_VERSION: "1.0.5"' "$ROOT/project.yml" || fail "marketing version must be 1.0.5"
-grep -q 'CURRENT_PROJECT_VERSION: "6"' "$ROOT/project.yml" || fail "build version must be 6"
+grep -q 'MARKETING_VERSION: "1.0.6"' "$ROOT/project.yml" || fail "marketing version must be 1.0.6"
+grep -q 'CURRENT_PROJECT_VERSION: "7"' "$ROOT/project.yml" || fail "build version must be 7"
 
 echo "PASS: third-party proxy mode contract"

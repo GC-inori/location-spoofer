@@ -18,6 +18,11 @@ try {
       accuracy: Number(settings.accuracy != null ? settings.accuracy : 25),
       motionSimulationEnabled: settings.motionSimulationEnabled === true
     });
+    console.log(
+      "[Location Spoofer] patched wifi=" + patched.stats.wifi +
+      " cell=" + patched.stats.cell +
+      " locations=" + patched.stats.locations
+    );
     finishBinary(patched.data);
   }
 } catch (error) {

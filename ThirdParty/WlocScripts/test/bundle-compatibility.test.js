@@ -5,7 +5,8 @@ import vm from "node:vm";
 
 const bundles = [
   new URL("../dist/v1/wloc.js", import.meta.url),
-  new URL("../dist/v1/wloc-settings.js", import.meta.url)
+  new URL("../dist/v1/wloc-settings.js", import.meta.url),
+  new URL("../dist/v1/wloc-prepare.js", import.meta.url)
 ];
 
 test("generated bundles avoid newer JavaScriptCore runtime requirements", async () => {
@@ -49,4 +50,21 @@ test("settings bundle runs without modern URL and text globals", async () => {
   });
 
   assert.equal(JSON.parse(result.response.body).success, true);
+});
+
+test("prepare bundle rewrites Accept-Encoding without modern globals", async () => {
+  const source = await readFile(bundles[2], "utf8");
+  let result;
+  vm.runInNewContext(source, {
+    $rocket: {},
+    $request: {
+      headers: { "Accept-Encoding": "gzip", "User-Agent": "test" }
+    },
+    $done: (value) => { result = value; },
+    Object,
+    String
+  });
+
+  assert.equal(result.headers["Accept-Encoding"], "identity");
+  assert.equal(result.headers["User-Agent"], "test");
 });

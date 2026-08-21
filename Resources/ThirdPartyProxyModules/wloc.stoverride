@@ -1,15 +1,23 @@
 name: Apple WLOC 定位修改
 desc: "修改 Apple 网络定位返回坐标 | 快捷指令(推荐): 设置地理位置 https://www.icloud.com/shortcuts/a82717d8fdad4e6280866fcf911173f7 清理恢复位置 https://www.icloud.com/shortcuts/f42632d406504f24a2cd163af4fe012f | 选点页面: https://wloc-pages.pages.dev/"
 author: xweiba
-homepage: https://github.com/xweiba/location-spoofer
+homepage: https://github.com/GC-inori/location-spoofer
 category: Tools
 
 http:
   mitm:
     - "gs-loc.apple.com"
     - "gs-loc-cn.apple.com"
+    - "gsp-ssl.ls.apple.com"
+    - "bluedot.is.autonavi.com"
+    - "bluedot.is.autonavi.com.gds.alibabadns.com"
   script:
-    - match: ^https?:\/\/gs-loc(-cn)?\.apple\.com\/clls\/wloc
+    - match: ^https?:\/\/(?:gs-loc(?:-cn)?\.apple\.com|gsp-ssl\.ls\.apple\.com|bluedot\.is\.autonavi\.com(?:\.gds\.alibabadns\.com)?)\/clls\/wloc
+      name: WLOC.Prepare
+      type: request
+      require-body: false
+      timeout: 3
+    - match: ^https?:\/\/(?:gs-loc(?:-cn)?\.apple\.com|gsp-ssl\.ls\.apple\.com|bluedot\.is\.autonavi\.com(?:\.gds\.alibabadns\.com)?)\/clls\/wloc
       name: WLOC.Location
       type: response
       require-body: true
@@ -23,9 +31,12 @@ http:
       timeout: 10
 
 script-providers:
+  WLOC.Prepare:
+    url: https://gh-proxy.org/https://raw.githubusercontent.com/GC-inori/location-spoofer/main/ThirdParty/WlocScripts/dist/v1/wloc-prepare.js
+    interval: 86400
   WLOC.Location:
-    url: https://gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/ThirdParty/WlocScripts/dist/v1/wloc.js
+    url: https://gh-proxy.org/https://raw.githubusercontent.com/GC-inori/location-spoofer/main/ThirdParty/WlocScripts/dist/v1/wloc.js
     interval: 86400
   WLOC.Settings:
-    url: https://gh-proxy.org/https://raw.githubusercontent.com/xweiba/location-spoofer/main/ThirdParty/WlocScripts/dist/v1/wloc-settings.js
+    url: https://gh-proxy.org/https://raw.githubusercontent.com/GC-inori/location-spoofer/main/ThirdParty/WlocScripts/dist/v1/wloc-settings.js
     interval: 86400

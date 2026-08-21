@@ -46,11 +46,11 @@ versioned protocol and motion setting.
 Current bundled module SHA-256 values:
 
 ```text
-263f3eae0ec4ef19d03eefa58f28e6545cccbc6a2d32c5e1d3493ba207ca7605  wloc.conf
-c0755a9edb2a1686190d12d156e9aa53693e15721efc4a29f9a06c2bf3115a5f  wloc.lpx
-06a426e4f37828d18b80abea04a8ade4fa7f93817cb1e37928c52da3e46f693a  wloc.module
-f6b9fc51c4d3c4fca837ff896dbe544f99604d9646f05841bad82bfdfdf5c4fa  wloc.sgmodule
-100e569e6ca3183f7da15fbb38ddb5cd91178488c0d9774acabc2721fa85a58c  wloc.stoverride
+6c687eef3e47351873d4cf7545a851a473f0cee7eadc7417beff31d41e1f2ef7  wloc.conf
+500bce45c3e5e0703408d5c9e29ddf1cbb1e1d976fceff3cb94260ac72fe7496  wloc.lpx
+eea76b97ff01b4c242f8b497f4cc9941ace12fafac0842f45fbbb6b877177628  wloc.module
+875adfc2a848e44b3109a663fb0780f6efb5feadf6c1a2b886a6d03103b71983  wloc.sgmodule
+1286996b790fa19d3e840b4167b90fcf9396e6c0372356adb347ede4796d5f07  wloc.stoverride
 ```
 
 The project acknowledges [Yu9191/wloc](https://github.com/Yu9191/wloc) as a

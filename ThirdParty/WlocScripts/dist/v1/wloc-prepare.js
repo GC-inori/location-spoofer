@@ -1,0 +1,1 @@
+(()=>{function i(){let e={},n=typeof $request=="undefined"?null:$request,o=n&&n.headers?n.headers:{},s=Object.keys(o);for(let t=0;t<s.length;t+=1){let r=s[t];r.toLowerCase()!=="accept-encoding"&&(e[r]=o[r])}e["Accept-Encoding"]="identity",$done({headers:e})}i();})();
