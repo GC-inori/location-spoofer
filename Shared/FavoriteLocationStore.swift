@@ -189,35 +189,36 @@ final class FavoriteLocationStore: ObservableObject {
     init(defaults: UserDefaults = AppGroup.defaults) {
         self.defaults = defaults
 
-        // 1. 加载分组
+        var loadedGroups: [FavoriteGroup]
         if let gData = defaults.data(forKey: Keys.groups),
            let decodedGroups = try? JSONDecoder().decode([FavoriteGroup].self, from: gData),
            !decodedGroups.isEmpty {
-            self.groups = decodedGroups.sorted(by: { $0.sortOrder < $1.sortOrder })
+            loadedGroups = decodedGroups.sorted(by: { $0.sortOrder < $1.sortOrder })
         } else {
-            self.groups = [FavoriteGroup.defaultGroup]
+            loadedGroups = [FavoriteGroup.defaultGroup]
         }
 
-        // 确保默认分组一定存在
-        if !self.groups.contains(where: { $0.isDefault || $0.id == FavoriteGroup.defaultGroupId }) {
-            self.groups.insert(FavoriteGroup.defaultGroup, at: 0)
+        if !loadedGroups.contains(where: { $0.isDefault || $0.id == FavoriteGroup.defaultGroupId }) {
+            loadedGroups.insert(FavoriteGroup.defaultGroup, at: 0)
         }
 
-        // 2. 加载收藏项
+        let loadedFavorites: [FavoriteLocation]
         if let data = defaults.data(forKey: Keys.favorites),
            let decoded = try? JSONDecoder().decode([FavoriteLocation].self, from: data) {
-            let defaultId = self.groups.first?.id ?? FavoriteGroup.defaultGroupId
-            self.favorites = decoded.map { loc in
+            let defaultId = loadedGroups.first?.id ?? FavoriteGroup.defaultGroupId
+            loadedFavorites = decoded.map { loc in
                 var item = loc
-                if !self.groups.contains(where: { $0.id == item.groupId }) {
+                if !loadedGroups.contains(where: { $0.id == item.groupId }) {
                     item.groupId = defaultId
                 }
                 return item
             }
         } else {
-            self.favorites = []
+            loadedFavorites = []
         }
 
+        self.groups = loadedGroups
+        self.favorites = loadedFavorites
         self.selectedFavoriteID = defaults.string(forKey: Keys.selectedID).flatMap(UUID.init(uuidString:))
     }
 

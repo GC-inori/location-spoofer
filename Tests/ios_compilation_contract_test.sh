@@ -37,6 +37,15 @@ test -s "$ROOT/docs/app-icon-source.svg" || fail "the optimized app icon must re
 test -s "$ROOT/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png" \
   || fail "the optimized 1024px app icon is missing"
 
+FAVORITE_STORE="$ROOT/Shared/FavoriteLocationStore.swift"
+test -f "$FAVORITE_STORE" || fail "FavoriteLocationStore must exist"
+grep -q 'var loadedGroups: \[FavoriteGroup\]' "$FAVORITE_STORE" \
+  || fail "FavoriteLocationStore init must load groups into a local before assigning stored properties"
+grep -q 'let loadedFavorites: \[FavoriteLocation\]' "$FAVORITE_STORE" \
+  || fail "FavoriteLocationStore init must load favorites into a local before assigning stored properties"
+! grep -n 'self.favorites = decoded.map' "$FAVORITE_STORE" \
+  || fail "FavoriteLocationStore init must not capture self in a map closure before initialization completes"
+
 # VPNManager and Tunnel must NOT exist
 test ! -f "$ROOT/App/VPNManager.swift" || fail "VPNManager must be removed"
 test ! -d "$ROOT/Tunnel" || fail "Tunnel directory must be removed"
