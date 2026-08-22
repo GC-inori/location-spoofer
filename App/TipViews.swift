@@ -10,6 +10,7 @@ enum TipKind: String, Identifiable {
 struct TipSheetView: View {
     let kind: TipKind
     var runtimeMode: ProxyRuntimeMode = .localWiFi
+    var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -17,15 +18,18 @@ struct TipSheetView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     switch kind {
-                    case .activation: ActivationTipContent(runtimeMode: runtimeMode, dismiss: { dismiss() })
-                    case .deactivation: DeactivationTipContent(runtimeMode: runtimeMode, dismiss: { dismiss() })
-                    case .removeProxy: RemoveProxyTipContent(dismiss: { dismiss() })
+                    case .activation: ActivationTipContent(runtimeMode: runtimeMode, dismiss: { dismiss(); onDismiss?() })
+                    case .deactivation: DeactivationTipContent(runtimeMode: runtimeMode, dismiss: { dismiss(); onDismiss?() })
+                    case .removeProxy: RemoveProxyTipContent(dismiss: { dismiss(); onDismiss?() })
                     }
                 }.padding(16)
             }
             .navigationTitle(kind.rawValue).navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
-                Button { dismiss() } label: {
+                Button {
+                    dismiss()
+                    onDismiss?()
+                } label: {
                     Text("知道了").font(.body.weight(.medium)).frame(maxWidth: .infinity).padding(.vertical, 12)
                 }.buttonStyle(.borderedProminent).tint(.blue).padding(.horizontal, 16).padding(.bottom, 8)
             }

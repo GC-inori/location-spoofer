@@ -1128,7 +1128,7 @@ struct MapHomeView: View {
 
     private func refreshThirdPartyState() {
         Task { @MainActor in
-            _ = await thirdPartyProxy.refreshConnectionState()
+            _ = try? await thirdPartyProxy.validateConnection()
         }
     }
 
