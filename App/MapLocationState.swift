@@ -84,6 +84,20 @@ struct MapPlaceDescriptor: Equatable {
         self.country = country?.nonEmpty
     }
 
+    var detailedAddress: String? {
+        var parts: [String] = []
+        if let c = country, !c.isEmpty { parts.append(c) }
+        if let p = province, !p.isEmpty { parts.append(p) }
+        if let ci = city, !ci.isEmpty, ci != province { parts.append(ci) }
+        if let d = district, !d.isEmpty, d != city { parts.append(d) }
+        if let r = road, !r.isEmpty { parts.append(r) }
+        if let s = streetAddress, !s.isEmpty, s != road { parts.append(s) }
+        if parts.isEmpty {
+            return pointOfInterest
+        }
+        return parts.joined()
+    }
+
     func displayName(viewportMeters: CLLocationDistance) -> String? {
         switch viewportMeters {
         case ..<1_000:

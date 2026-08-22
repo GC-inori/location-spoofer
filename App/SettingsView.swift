@@ -20,12 +20,17 @@ private enum UpdateCheckResult: Identifiable {
 struct SettingsView: View {
     @ObservedObject var setup: SetupCoordinator
     @ObservedObject var actions: LocationActionCoordinator
+    @ObservedObject var favorites: FavoriteLocationStore
+    var onSwitchToLocationTab: (() -> Void)? = nil
+
     @ObservedObject private var proxy = ProxyManager.shared
     @ObservedObject private var runtimeMode = ProxyRuntimeModeStore.shared
     @ObservedObject private var thirdPartyProxy = ThirdPartyProxyManager.shared
     @ObservedObject private var thirdPartyClient = ThirdPartyProxyClientStore.shared
     @ObservedObject private var motionSimulation = MotionSimulationStore.shared
     @ObservedObject private var moduleSource = ThirdPartyModuleSourceStore.shared
+    @ObservedObject private var searchConfig = SearchConfigurationStore.shared
+
     @Environment(\.dismiss) private var dismiss
     @State private var activeTip: TipKind?
     @State private var proxyOperationError = ""
@@ -36,9 +41,11 @@ struct SettingsView: View {
     @State private var showCertificateResetConfirmation = false
     @State private var isCheckingForUpdates = false
     @State private var updateCheckResult: UpdateCheckResult?
+    @State private var showLogsSheet = false
 
     var body: some View {
         Form {
+            // 1. 运行模式
             Section("运行模式") {
                 Picker("模式", selection: runtimeModeBinding) {
                     ForEach(ProxyRuntimeMode.allCases) { mode in
@@ -47,9 +54,9 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.inline)
                 .disabled(modeOperationRunning || actions.state.isBusy || thirdPartyProxy.isRequesting)
-
             }
 
+            // 2. 状态
             Section("状态") {
                 if runtimeMode.mode == .localWiFi {
                     HStack {
@@ -83,6 +90,7 @@ struct SettingsView: View {
                 }
             }
 
+            // 3. 定位模拟
             Section("定位模拟") {
                 Toggle("运动状态模拟", isOn: motionSimulationBinding)
                     .disabled(
@@ -95,35 +103,63 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            // 4. 搜索配置
+            Section("搜索配置") {
+                Stepper("首页可见展示数: \(searchConfig.visibleCountX) 个", value: $searchConfig.visibleCountX, in: 2...15)
+                Stepper("首页最大联想数: \(searchConfig.maxCountY) 个", value: $searchConfig.maxCountY, in: 5...30)
+                Text("控制地图主页搜索下拉联想的展示条数上限与可见高度。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            // 5. 收藏管理
+            Section("收藏") {
+                NavigationLink {
+                    FavoriteManagementView(favorites: favorites, onSelectAndReturnToMap: { _ in
+                        onSwitchToLocationTab?()
+                    })
+                } label: {
+                    Label("收藏管理", systemImage: "star.bubble")
+                }
+                Text("管理收藏地点与自定义分组，支持多组分类、拖拽排序与坐标信息。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            // 6. 第三方代理配置（仅在第三方模式展示）
             if runtimeMode.mode == .thirdParty {
                 thirdPartyConfigurationSection
-            } else {
-                Section("说明") {
-                    Button {
-                        activeTip = .activation
-                    } label: {
-                        Label("生效说明", systemImage: "checklist")
-                    }
-                    Button {
-                        activeTip = .deactivation
-                    } label: {
-                        Label("失效说明", systemImage: "arrow.uturn.backward.circle")
-                    }
+            }
+
+            // 7. 无法定位？（帮助说明）
+            Section("无法定位？") {
+                Button {
+                    activeTip = .activation
+                } label: {
+                    Label("生效说明", systemImage: "checklist")
+                }
+                Button {
+                    activeTip = .deactivation
+                } label: {
+                    Label("失效说明", systemImage: "arrow.uturn.backward.circle")
+                }
+                if runtimeMode.mode == .localWiFi {
                     Button {
                         activeTip = .removeProxy
                     } label: {
                         Label("关闭 WiFi 代理", systemImage: "wifi.slash")
                     }
                 }
-
             }
 
+            // 8. 工作原理
             Section("工作原理") {
                 Text(workflowDescription)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
+            // 9. 应用与日志
             Section("应用") {
                 if runtimeMode.mode == .localWiFi {
                     Button {
@@ -146,8 +182,21 @@ struct SettingsView: View {
                 }
                 .disabled(isCheckingForUpdates)
                 valueRow("版本", value: versionText)
+
+                Button {
+                    showLogsSheet = true
+                } label: {
+                    HStack {
+                        Label("运行日志", systemImage: "ellipsis.bubble")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
+            // 10. 证书（仅 APP 本机模式展示）
             if runtimeMode.mode == .localWiFi {
                 Section("证书") {
                     Button(role: .destructive) {
@@ -163,13 +212,15 @@ struct SettingsView: View {
                 }
             }
         }
-        .navigationTitle("设置")
+        .navigationTitle("配置")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) { Button("完成") { dismiss() } }
-        }
         .sheet(item: $activeTip) { kind in
             TipSheetView(kind: kind)
+        }
+        .sheet(isPresented: $showLogsSheet) {
+            NavigationView {
+                RuntimeLogsView(setup: setup, actions: actions, testFavorite: testFavorite)
+            }
         }
         .alert(proxyOperationAlertTitle, isPresented: Binding(
             get: { !proxyOperationError.isEmpty },
@@ -204,6 +255,15 @@ struct SettingsView: View {
             guard updateRecommended else { return }
             disableUnsupportedThirdPartyMotionSimulation()
         }
+    }
+
+    private var testFavorite: FavoriteLocation {
+        favorites.selectedFavorite ?? FavoriteLocation(
+            name: "诊断位置",
+            latitude: 22.544577,
+            longitude: 113.94114,
+            accuracy: 25
+        )
     }
 
     private func valueRow(_ title: String, value: String) -> some View {

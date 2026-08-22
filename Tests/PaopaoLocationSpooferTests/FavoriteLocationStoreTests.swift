@@ -190,6 +190,57 @@ final class FavoriteLocationStoreTests: XCTestCase {
         XCTAssertFalse(MapConfiguration.default.allowsCurrentLocationRequest)
     }
 
+    func testGroupCreationAndNamingLimit() {
+        let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = FavoriteLocationStore(defaults: defaults)
+
+        XCTAssertEqual(store.groups.count, 1)
+        XCTAssertTrue(store.groups[0].isDefault)
+
+        let group = store.addGroup(name: "这是一个超过十个字的长分组名称测试")
+        XCTAssertLessThanOrEqual(group.name.count, 10)
+        XCTAssertEqual(store.groups.count, 2)
+    }
+
+    func testDefaultGroupCannotBeDeletedWhenOnlyOneGroupExists() {
+        let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = FavoriteLocationStore(defaults: defaults)
+
+        let defaultGroupId = store.groups[0].id
+        store.deleteGroup(defaultGroupId)
+        XCTAssertEqual(store.groups.count, 1)
+        XCTAssertEqual(store.groups[0].id, defaultGroupId)
+    }
+
+    func testFavoriteUsageCountIncrementAndRecentSorting() {
+        let suite = "FavoriteLocationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = FavoriteLocationStore(defaults: defaults)
+
+        let fav1 = store.save(name: "地点1", latitude: 22.544, longitude: 113.941, accuracy: 25)
+        let fav2 = store.save(name: "地点2", latitude: 22.550, longitude: 113.950, accuracy: 25)
+
+        store.incrementUsageCount(id: fav1.id)
+        store.incrementUsageCount(id: fav1.id)
+        store.incrementUsageCount(id: fav2.id)
+
+        let recents = store.recentFavorites(maxCount: 5)
+        XCTAssertEqual(recents.first?.id, fav1.id)
+        XCTAssertEqual(recents.first?.usageCount, 2)
+    }
+
+    func testFavoriteDisplayFormatting() {
+        XCTAssertEqual(FavoriteDisplayFormatter.truncateMiddle("默认特别长分组", maxChars: 3), "默认...组")
+        XCTAssertEqual(FavoriteDisplayFormatter.truncateMiddle("短组", maxChars: 3), "短组")
+        XCTAssertEqual(FavoriteDisplayFormatter.truncateEnd("秣陵路东段", maxChars: 3), "秣陵路...")
+        XCTAssertEqual(FavoriteDisplayFormatter.truncateEnd("秣陵", maxChars: 3), "秣陵")
+    }
+
 }
 
 private struct LegacyFavoritePayload: Encodable {

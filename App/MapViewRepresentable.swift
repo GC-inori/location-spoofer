@@ -30,14 +30,107 @@ enum MapZoomMath {
     }
 }
 
+final class SelectedLocationAnnotation: NSObject, MKAnnotation {
+    @objc dynamic var coordinate: CLLocationCoordinate2D
+    var title: String?
+    var subtitle: String?
+
+    init(coordinate: CLLocationCoordinate2D, title: String? = nil, subtitle: String? = nil) {
+        self.coordinate = coordinate
+        self.title = title
+        self.subtitle = subtitle
+        super.init()
+    }
+}
+
+final class SelectedLocationAnnotationView: MKAnnotationView {
+    static let reuseIdentifier = "SelectedLocationAnnotationView"
+
+    private let pinImageView = UIImageView()
+    private let bubbleView = UIView()
+    private let titleLabel = UILabel()
+
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        setupViews()
+    }
+
+    required init?(coder aDecoder: NSCoder) {
+        super.init(coder: aDecoder)
+        setupViews()
+    }
+
+    private func setupViews() {
+        canShowCallout = false
+        centerOffset = CGPoint(x: 0, y: -14)
+
+        // 1. 较小尺寸图钉（26pt）
+        let pinSize: CGFloat = 26
+        let sizeCfg = UIImage.SymbolConfiguration(pointSize: pinSize, weight: .semibold)
+        let paletteCfg = UIImage.SymbolConfiguration(paletteColors: [.white, .red])
+        let pinImage = UIImage(systemName: "mappin", withConfiguration: sizeCfg.applying(paletteCfg))
+        pinImageView.image = pinImage
+        pinImageView.contentMode = .scaleAspectFit
+        pinImageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(pinImageView)
+
+        // 2. 图钉下方的详细位置描述气泡
+        bubbleView.translatesAutoresizingMaskIntoConstraints = false
+        bubbleView.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.92)
+        bubbleView.layer.cornerRadius = 8
+        bubbleView.layer.shadowColor = UIColor.black.cgColor
+        bubbleView.layer.shadowOpacity = 0.22
+        bubbleView.layer.shadowRadius = 4
+        bubbleView.layer.shadowOffset = CGSize(width: 0, height: 2)
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = UIFont.systemFont(ofSize: 11, weight: .medium)
+        titleLabel.textColor = UIColor.label
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 2
+        bubbleView.addSubview(titleLabel)
+
+        addSubview(bubbleView)
+
+        NSLayoutConstraint.activate([
+            pinImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            pinImageView.topAnchor.constraint(equalTo: topAnchor),
+            pinImageView.widthAnchor.constraint(equalToConstant: pinSize),
+            pinImageView.heightAnchor.constraint(equalToConstant: pinSize),
+
+            bubbleView.topAnchor.constraint(equalTo: pinImageView.bottomAnchor, constant: 4),
+            bubbleView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            bubbleView.widthAnchor.constraint(lessThanOrEqualToConstant: 260),
+            bubbleView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            titleLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 4),
+            titleLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -4),
+            titleLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -8)
+        ])
+    }
+
+    func configure(with annotation: MKAnnotation?) {
+        self.annotation = annotation
+        if let customAnno = annotation as? SelectedLocationAnnotation,
+           let text = customAnno.title, !text.isEmpty {
+            titleLabel.text = text
+            bubbleView.isHidden = false
+        } else {
+            bubbleView.isHidden = true
+        }
+        setNeedsLayout()
+    }
+}
+
 struct MapViewRepresentable: UIViewRepresentable {
     let selection: MapSelection
+    let addressDescription: String?
     let initialViewportMeters: CLLocationDistance
     let cameraCommand: MapCameraCommand?
     let onRealtimeLocationChanged: (CLLocation) -> Void
-    let onUserCenterChanged: (CLLocationCoordinate2D, CLLocationDistance) -> Void
     let onViewportChanged: (CLLocationDistance) -> Void
-    let onMapTap: (CLLocationCoordinate2D) -> Void
+    let onMapLongPress: (CLLocationCoordinate2D) -> Void
     let onUserZoomChanged: ((CLLocationDistance) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -47,12 +140,12 @@ struct MapViewRepresentable: UIViewRepresentable {
         map.delegate = context.coordinator
         map.showsUserLocation = true
         map.showsCompass = false
+        map.register(
+            SelectedLocationAnnotationView.self,
+            forAnnotationViewWithReuseIdentifier: SelectedLocationAnnotationView.reuseIdentifier
+        )
+
         let initialDistance = max(50, initialViewportMeters)
-        RuntimeLogger.info("APP", "地图", "makeUIView", details: [
-            "zoom": String(initialDistance),
-            "初始坐标来源": String(describing: selection.source),
-            "地图标准": CoordinateConverter.currentMapCoordinateSystem.rawValue
-        ])
         map.setRegion(
             MKCoordinateRegion(
                 center: selection.coordinate,
@@ -62,42 +155,33 @@ struct MapViewRepresentable: UIViewRepresentable {
             animated: false
         )
 
-        // Center pin — positioned relative to geographic center, not Auto Layout
-        let pinSize: CGFloat = 38
-        let sizeCfg = UIImage.SymbolConfiguration(pointSize: pinSize, weight: .semibold)
-        let paletteCfg = UIImage.SymbolConfiguration(paletteColors: [.white, .red])
-        let pinImage = UIImage(systemName: "mappin",
-                               withConfiguration: sizeCfg.applying(paletteCfg))
-        let pin = UIImageView(image: pinImage)
-        pin.frame = CGRect(x: 0, y: 0, width: pinSize, height: pinSize)
-        pin.isUserInteractionEnabled = false
-        pin.layer.shadowColor = UIColor.black.cgColor
-        pin.layer.shadowOpacity = 0.28
-        pin.layer.shadowRadius = 5
-        pin.layer.shadowOffset = CGSize(width: 0, height: 3)
-        map.addSubview(pin)
-        context.coordinator.centerPin = pin
-
+        // 指南针按钮放置在左上角
         let compass = MKCompassButton(mapView: map)
         compass.compassVisibility = .adaptive
         compass.translatesAutoresizingMaskIntoConstraints = false
         map.addSubview(compass)
         NSLayoutConstraint.activate([
             compass.leadingAnchor.constraint(equalTo: map.safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            compass.topAnchor.constraint(equalTo: map.safeAreaLayoutGuide.topAnchor, constant: 72)
+            compass.topAnchor.constraint(equalTo: map.safeAreaLayoutGuide.topAnchor, constant: 68)
         ])
 
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
-        tap.cancelsTouchesInView = false
-        map.addGestureRecognizer(tap)
+        // 长按手势选点
+        let longPress = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleLongPress(_:))
+        )
+        longPress.minimumPressDuration = 0.35
+        map.addGestureRecognizer(longPress)
+
         context.coordinator.map = map
-        context.coordinator.setupKeyboardObservers()
+        context.coordinator.updateAnnotation(on: map, coordinate: selection.coordinate, address: addressDescription)
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.consume(cameraCommand, on: map)
+        context.coordinator.updateAnnotation(on: map, coordinate: selection.coordinate, address: addressDescription)
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
@@ -107,44 +191,29 @@ struct MapViewRepresentable: UIViewRepresentable {
         private var lastConsumedCommandID: UInt64?
         private var activeCameraCommandID: UInt64?
         private var activeCommandIsZoom = false
-        private var regionChangeWasUserDriven = false
         private var isPinchZoom = false
-        weak var centerPin: UIImageView?
-        private let pinSize: CGFloat = 38
-        // 蓝点实际大小从 MKUserLocationView 取，默认 20pt
+        private var selectedAnnotation: SelectedLocationAnnotation?
         private var userDotDiameter: CGFloat = 20
-        private var keyboardObserverTokens: [NSObjectProtocol] = []
         private var lastForwardedRealtimeTimestamp: Date?
-
-        deinit {
-            keyboardObserverTokens.forEach(NotificationCenter.default.removeObserver)
-        }
 
         init(parent: MapViewRepresentable) {
             self.parent = parent
         }
 
-        private func updatePinPosition(on mapView: MKMapView) {
-            guard let pin = centerPin else { return }
-            let centerPt = mapView.convert(mapView.centerCoordinate, toPointTo: mapView)
-            // pin 尖在底边，上移自身一半 + 蓝点半径对齐
-            pin.center = CGPoint(
-                x: centerPt.x,
-                y: centerPt.y - pinSize / 2 + 5
-            )
-        }
-
-        func setupKeyboardObservers() {
-            guard keyboardObserverTokens.isEmpty else { return }
-            let nc = NotificationCenter.default
-            keyboardObserverTokens.append(nc.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
-                guard let self, let map = self.map else { return }
-                self.updatePinPosition(on: map)
-            })
-            keyboardObserverTokens.append(nc.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
-                guard let self, let map = self.map else { return }
-                self.updatePinPosition(on: map)
-            })
+        func updateAnnotation(on mapView: MKMapView, coordinate: CLLocationCoordinate2D, address: String?) {
+            if let anno = selectedAnnotation {
+                if !anno.coordinate.isApproximatelyEqual(to: coordinate) {
+                    anno.coordinate = coordinate
+                }
+                anno.title = address
+                if let view = mapView.view(for: anno) as? SelectedLocationAnnotationView {
+                    view.configure(with: anno)
+                }
+            } else {
+                let anno = SelectedLocationAnnotation(coordinate: coordinate, title: address)
+                selectedAnnotation = anno
+                mapView.addAnnotation(anno)
+            }
         }
 
         func consume(_ command: MapCameraCommand?, on map: MKMapView) {
@@ -152,14 +221,17 @@ struct MapViewRepresentable: UIViewRepresentable {
             lastConsumedCommandID = command.id
             activeCameraCommandID = command.id
             activeCommandIsZoom = command.kind.isZoom
-            regionChangeWasUserDriven = false
             map.userTrackingMode = .none
 
             let region: MKCoordinateRegion
             switch command.kind {
-            case let .focus(coordinate, _):
-                // 保持当前 span 不变，避免正方形 region 在竖屏 inflate
-                region = MKCoordinateRegion(center: coordinate, span: map.region.span)
+            case let .focus(coordinate, distance):
+                let meters = max(100, distance)
+                region = MKCoordinateRegion(
+                    center: coordinate,
+                    latitudinalMeters: meters,
+                    longitudinalMeters: meters
+                )
             case let .zoom(factor):
                 region = MKCoordinateRegion(
                     center: map.centerCoordinate,
@@ -170,15 +242,33 @@ struct MapViewRepresentable: UIViewRepresentable {
             map.setRegion(region, animated: true)
         }
 
-        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
-            guard gesture.state == .ended, let map else { return }
+        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .began, let map else { return }
             let point = gesture.location(in: map)
-            parent.onMapTap(map.convert(point, toCoordinateFrom: map))
+            let coord = map.convert(point, toCoordinateFrom: map)
+            // 触觉反馈
+            let feedback = UIImpactFeedbackGenerator(style: .medium)
+            feedback.prepare()
+            feedback.impactOccurred()
+            parent.onMapLongPress(coord)
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation { return nil }
+            guard let selectedAnno = annotation as? SelectedLocationAnnotation else { return nil }
+            let view = mapView.dequeueReusableAnnotationView(
+                withIdentifier: SelectedLocationAnnotationView.reuseIdentifier,
+                for: selectedAnno
+            ) as? SelectedLocationAnnotationView ?? SelectedLocationAnnotationView(
+                annotation: selectedAnno,
+                reuseIdentifier: SelectedLocationAnnotationView.reuseIdentifier
+            )
+            view.configure(with: selectedAnno)
+            return view
         }
 
         func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
             for view in views where view.annotation is MKUserLocation {
-                // 取蓝点实际大小，隐藏精度圈
                 userDotDiameter = view.bounds.width
                 for sub in view.subviews where sub.bounds.width > userDotDiameter + 4 {
                     sub.isHidden = true
@@ -187,24 +277,8 @@ struct MapViewRepresentable: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
-            guard let location = visibleUserLocationSample(userLocation) else {
-                RuntimeLogger.warning("APP", "实时定位", "MapKit 蓝点更新但 location 为空", details: [
-                    "来源": "MKMapView.didUpdate"
-                ])
-                return
-            }
-            guard CLLocationCoordinate2DIsValid(location.coordinate) else {
-                RealtimeLocationTrace.log("拒绝 MapKit 蓝点样本：坐标无效", location: location, details: [
-                    "来源": "MKMapView.didUpdate"
-                ], level: .warning)
-                return
-            }
-            guard location.horizontalAccuracy >= 0 else {
-                RealtimeLocationTrace.log("拒绝 MapKit 蓝点样本：水平精度无效", location: location, details: [
-                    "来源": "MKMapView.didUpdate"
-                ], level: .warning)
-                return
-            }
+            guard let location = visibleUserLocationSample(userLocation) else { return }
+            guard CLLocationCoordinate2DIsValid(location.coordinate), location.horizontalAccuracy >= 0 else { return }
             forwardRealtimeLocation(location)
         }
 
@@ -212,17 +286,11 @@ struct MapViewRepresentable: UIViewRepresentable {
             let activeRecognizers = ([mapView as UIView] + mapView.subviews)
                 .compactMap(\.gestureRecognizers)
                 .flatMap { $0 }
-                .filter { recognizer in
-                    recognizer.state == .began || recognizer.state == .changed
-                }
+                .filter { $0.state == .began || $0.state == .changed }
             let hasActiveGesture = !activeRecognizers.isEmpty
-
-            // Pinching updates the viewport/name granularity only. MapKit can
-            // keep its pan recognizer active during a pinch, so only a pure pan
-            // is allowed to replace the selected center coordinate.
             let hasActivePan = activeRecognizers.contains { $0 is UIPanGestureRecognizer }
             let hasActivePinch = activeRecognizers.contains { $0 is UIPinchGestureRecognizer }
-            regionChangeWasUserDriven = hasActivePan && !hasActivePinch
+            _ = hasActivePan
             isPinchZoom = hasActivePinch
             if hasActiveGesture {
                 activeCameraCommandID = nil
@@ -233,8 +301,7 @@ struct MapViewRepresentable: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             let distance = visibleVerticalDistance(in: mapView)
             parent.onViewportChanged(distance)
-            updatePinPosition(on: mapView)
-            // 同步蓝点坐标（避免 delegate 更新不及时导致 mapState.realtimeLocation 为 nil）
+
             if let ul = visibleUserLocationSample(mapView.userLocation),
                CLLocationCoordinate2DIsValid(ul.coordinate), ul.horizontalAccuracy >= 0 {
                 if lastForwardedRealtimeTimestamp.map({ ul.timestamp > $0 }) ?? true {
@@ -256,11 +323,7 @@ struct MapViewRepresentable: UIViewRepresentable {
 
             if userZoomed {
                 parent.onUserZoomChanged?(distance)
-            } else if regionChangeWasUserDriven {
-                parent.onUserCenterChanged(mapView.centerCoordinate, distance)
             }
-
-            regionChangeWasUserDriven = false
         }
 
         private func forwardRealtimeLocation(_ location: CLLocation) {
@@ -268,10 +331,6 @@ struct MapViewRepresentable: UIViewRepresentable {
             parent.onRealtimeLocationChanged(location)
         }
 
-        /// `MKUserLocation.coordinate` is the coordinate of the blue-point
-        /// annotation in the current map representation. Keep the native
-        /// accuracy/timestamp metadata, but do not replace it with the raw
-        /// Core Location coordinate carried by `location.coordinate`.
         private func visibleUserLocationSample(_ userLocation: MKUserLocation) -> CLLocation? {
             guard let native = userLocation.location else { return nil }
             return CLLocation(

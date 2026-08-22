@@ -28,12 +28,10 @@ struct ContentView: View {
             case .setup:
                 FirstSetupView(setup: setup, onComplete: finishInitialSetup)
             case .map:
-                NavigationView {
-                    MapHomeView(setup: setup)
-                }
-                .fullScreenCover(isPresented: $setup.needsSetup) {
-                    FirstSetupView(setup: setup, onComplete: finishPresentedSetup)
-                }
+                MainContainerView(setup: setup)
+                    .fullScreenCover(isPresented: $setup.needsSetup) {
+                        FirstSetupView(setup: setup, onComplete: finishPresentedSetup)
+                    }
             }
         }
         .task { await bootstrap() }
