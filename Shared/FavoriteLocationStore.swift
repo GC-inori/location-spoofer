@@ -39,7 +39,7 @@ struct FavoriteGroup: Codable, Identifiable, Equatable, Hashable {
     }
 }
 
-struct FavoriteLocation: Codable, Identifiable, Equatable, Hashable {
+struct FavoriteLocation: Codable, Identifiable, Equatable {
     let id: UUID
     var groupId: UUID
     var name: String

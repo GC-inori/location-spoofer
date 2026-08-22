@@ -201,6 +201,17 @@ final class MapLocationState: ObservableObject {
     }
 
     @discardableResult
+    func selectRealtime(_ coordinate: CLLocationCoordinate2D) -> UInt64 {
+        realtimeCoordinate = coordinate
+        return replaceSelection(
+            coordinate: coordinate,
+            source: .realtime,
+            explicitName: nil,
+            focusDistance: viewportMeters
+        )
+    }
+
+    @discardableResult
     func acceptRealtimeLocation(
         _ coordinate: CLLocationCoordinate2D,
         intent: RealtimeLocationIntent

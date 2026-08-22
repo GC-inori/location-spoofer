@@ -964,7 +964,6 @@ struct MapHomeView: View {
     private func startMapRuntimeOnce() {
         guard !mapRuntimeDidStart else { return }
         mapRuntimeDidStart = true
-        RealtimeLocationManager.shared.start()
         startPeriodicSpoofDiagnosis()
     }
 
@@ -1104,7 +1103,7 @@ struct MapHomeView: View {
         guard runtimeMode.mode == .localWiFi else { return }
         guard wifiChangeObserverToken == nil else { return }
         wifiChangeObserverToken = net.observeWiFiChanges { [self] reason in
-            handleWiFiChange(reason: reason)
+            handleWiFiChange(reason: reason.rawValue)
         }
     }
 
@@ -1117,7 +1116,7 @@ struct MapHomeView: View {
             try? await Task.sleep(nanoseconds: stabilizationNanoseconds)
             guard !Task.isCancelled, wifiVerificationID == verificationID else { return }
             guard runtimeMode.mode == .localWiFi else { return }
-            guard net.isConnectedToWiFi else {
+            guard net.isWiFiEnabled else {
                 setup.requestSetup(message: "Wi-Fi 连接已断开，请连接 Wi-Fi 后重试。")
                 return
             }
