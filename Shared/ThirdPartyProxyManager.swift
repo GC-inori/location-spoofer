@@ -309,7 +309,7 @@ final class ThirdPartyProxyManager: ObservableObject {
 }
 
 enum ThirdPartyProxyClient: String, CaseIterable, Identifiable {
-    static let moduleSubscriptionVersion = "1.0.6"
+    static let moduleSubscriptionVersion = "1.0.7"
 
     case shadowrocket
     case surge

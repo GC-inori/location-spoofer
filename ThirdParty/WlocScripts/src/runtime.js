@@ -1,4 +1,4 @@
-export const MODULE_VERSION = "1.0.6";
+export const MODULE_VERSION = "1.0.7";
 export const PROTOCOL_VERSION = 1;
 export const CAPABILITIES = [
   "wifi", "cellTower", "arpc", "marker", "synthetic", "bare", "motionSimulation"
